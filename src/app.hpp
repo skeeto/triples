@@ -44,6 +44,7 @@ private:
     bool                        running_ = true;
     bool                        game_over_ = false;
     bool                        audio_initialized_ = false;
+    int                         active_touch_fingers_ = 0;
     std::uint64_t               last_tick_ms_ = 0;
     std::uint64_t               game_over_at_ms_ = 0;
     static constexpr std::uint64_t kGameOverLockoutMs = 1000;

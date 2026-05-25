@@ -148,6 +148,11 @@ void App::handle_event_(const SDL_Event& e) {
             break;
         }
         case SDL_EVENT_MOUSE_BUTTON_DOWN:
+            // SDL3 on Emscripten synthesizes mouse events from every touch.
+            // We let the dedicated FINGER events drive touch — otherwise the
+            // same gesture would be double-processed AND we can't tell from
+            // here whether other fingers are on the screen.
+            if (e.button.which == SDL_TOUCH_MOUSEID) break;
             if (e.button.button == SDL_BUTTON_LEFT) {
                 float x = e.button.x, y = e.button.y;
                 apply_event_scale_(x, y);
@@ -155,6 +160,7 @@ void App::handle_event_(const SDL_Event& e) {
             }
             break;
         case SDL_EVENT_MOUSE_BUTTON_UP:
+            if (e.button.which == SDL_TOUCH_MOUSEID) break;
             if (e.button.button == SDL_BUTTON_LEFT) {
                 float x = e.button.x, y = e.button.y;
                 apply_event_scale_(x, y);
@@ -162,6 +168,7 @@ void App::handle_event_(const SDL_Event& e) {
             }
             break;
         case SDL_EVENT_MOUSE_MOTION:
+            if (e.motion.which == SDL_TOUCH_MOUSEID) break;
             if (e.motion.state & SDL_BUTTON_LMASK) {
                 float x = e.motion.x, y = e.motion.y;
                 apply_event_scale_(x, y);
@@ -169,18 +176,38 @@ void App::handle_event_(const SDL_Event& e) {
             }
             break;
         case SDL_EVENT_FINGER_DOWN: {
+            ++active_touch_fingers_;
+            if (active_touch_fingers_ >= 2) {
+                // Second (or later) finger — this is a pinch / multi-touch
+                // gesture. Cancel any in-progress single-finger drag so it
+                // doesn't keep tracking the first finger during the pinch.
+                input::PointerEvent ev{input::PointerKind::Cancel, 0.0f, 0.0f,
+                                       input::PointerEvent::Source::Touch};
+                drag_.on_pointer(ev, state_.board);
+                break;
+            }
             float w = renderer_.layout().win_w;
             float h = renderer_.layout().win_h;
             on_pointer_down_(e.tfinger.x * w, e.tfinger.y * h, input::PointerEvent::Source::Touch);
             break;
         }
-        case SDL_EVENT_FINGER_UP: {
-            float w = renderer_.layout().win_w;
-            float h = renderer_.layout().win_h;
-            on_pointer_up_(e.tfinger.x * w, e.tfinger.y * h, input::PointerEvent::Source::Touch);
+        case SDL_EVENT_FINGER_UP:
+        case SDL_EVENT_FINGER_CANCELED: {
+            if (active_touch_fingers_ > 0) --active_touch_fingers_;
+            // Only synthesize a pointer-up when the FINAL finger lifts and
+            // we were running a single-finger drag (active_touch_fingers_
+            // would have been 1 before this decrement, never >=2 mid-pinch).
+            if (active_touch_fingers_ == 0) {
+                float w = renderer_.layout().win_w;
+                float h = renderer_.layout().win_h;
+                on_pointer_up_(e.tfinger.x * w, e.tfinger.y * h, input::PointerEvent::Source::Touch);
+            }
             break;
         }
         case SDL_EVENT_FINGER_MOTION: {
+            // Drop multi-touch motion — only single-finger motion drives the
+            // drag controller.
+            if (active_touch_fingers_ > 1) break;
             float w = renderer_.layout().win_w;
             float h = renderer_.layout().win_h;
             on_pointer_move_(e.tfinger.x * w, e.tfinger.y * h, input::PointerEvent::Source::Touch);

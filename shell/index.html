@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>Triples</title>
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -16,7 +16,11 @@
     width: 100%;
     background: #1a1a1a;
     overscroll-behavior: none;
-    touch-action: none;
+    /* Pinch yes, pan and double-tap-zoom no. Combined with the
+       preventDefault override below, this lets iOS Safari engage compositor
+       pinch-recognition (pinch-to-close-tab) while keeping single-finger
+       swipes snappy (no pan-vs-tap disambiguation delay). */
+    touch-action: pinch-zoom;
     -webkit-user-select: none;
     user-select: none;
     -webkit-tap-highlight-color: rgba(0,0,0,0);
@@ -26,7 +30,7 @@
     display: block;
     width: 100vw;
     height: 100vh;
-    touch-action: none;
+    touch-action: pinch-zoom;
     outline: none;
     border: 0;
     background: #1a1a1a;
@@ -37,6 +41,20 @@
 <canvas id="canvas" tabindex="0" oncontextmenu="event.preventDefault()"></canvas>
 <script>
   (function () {
+    // Globally neutralize preventDefault() for touch pointer events and
+    // touch events. SDL3's Emscripten wrapper calls e.preventDefault() on
+    // pointer events (its callback returns EM_TRUE), which blocks iOS
+    // Safari from engaging compositor-level pinch recognition on the page.
+    // Monkey-patching Event.prototype catches ALL call sites — per-event
+    // overrides don't, because the Emscripten wrapper may invoke the
+    // prototype method directly. Must run BEFORE the Emscripten loader is
+    // evaluated so SDL3 sees the patched version.
+    var origPreventDefault = Event.prototype.preventDefault;
+    Event.prototype.preventDefault = function () {
+      if (this.pointerType === 'touch') return;       // PointerEvent (touch)
+      if (this.touches !== undefined) return;          // TouchEvent
+      return origPreventDefault.call(this);
+    };
     const canvas = document.getElementById('canvas');
     function sync() {
       const dpr = window.devicePixelRatio || 1;
@@ -48,10 +66,52 @@
     }
     sync();
     window.addEventListener('resize', sync);
-    canvas.addEventListener('touchstart',  e => e.preventDefault(), {passive: false});
-    canvas.addEventListener('touchmove',   e => e.preventDefault(), {passive: false});
-    canvas.addEventListener('touchend',    e => e.preventDefault(), {passive: false});
-    canvas.addEventListener('gesturestart', e => e.preventDefault());
+    // The preventDefault monkey-patch lets the browser engage compositor
+    // pinch, but SDL3 still receives the first single-finger pointerdown and
+    // starts a swipe drag. When a second finger lands we need to (a) cancel
+    // that in-progress drag so the tiles don't slide during the pinch and
+    // (b) keep SDL3 from seeing any further events in this gesture, so the
+    // second finger isn't treated as a fresh tap.
+    var activeTouchPointers = new Set();
+    var multiTouchActive = false;
+    function multiTouchFilter(e) {
+      if (e.pointerType !== 'touch') return;
+      if (e.type === 'pointerdown') {
+        activeTouchPointers.add(e.pointerId);
+        if (activeTouchPointers.size >= 2 && !multiTouchActive) {
+          // First moment we see two fingers — cancel any in-flight drag.
+          // We dispatch the cancels BEFORE flipping multiTouchActive, so
+          // this listener re-entering for the synthetic events lets them
+          // propagate through to SDL3.
+          activeTouchPointers.forEach(function (id) {
+            if (id !== e.pointerId) {
+              canvas.dispatchEvent(new PointerEvent('pointercancel', {
+                pointerId: id, pointerType: 'touch',
+                bubbles: true, cancelable: true,
+              }));
+            }
+          });
+          multiTouchActive = true;
+        }
+        if (multiTouchActive) e.stopImmediatePropagation();
+        return;
+      }
+      if (e.type === 'pointermove') {
+        if (multiTouchActive) e.stopImmediatePropagation();
+        return;
+      }
+      if (e.type === 'pointerup' || e.type === 'pointercancel') {
+        activeTouchPointers.delete(e.pointerId);
+        if (multiTouchActive) {
+          e.stopImmediatePropagation();
+          if (activeTouchPointers.size === 0) multiTouchActive = false;
+        }
+        return;
+      }
+    }
+    ['pointerdown', 'pointermove', 'pointerup', 'pointercancel'].forEach(function (t) {
+      window.addEventListener(t, multiTouchFilter, {capture: true});
+    });
 
     // Browser autoplay policy keeps SDL3's AudioContext suspended until a
     // user gesture lets us resume it from a real event-handler frame. SDL3

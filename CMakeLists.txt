@@ -109,6 +109,30 @@ if(EMSCRIPTEN)
         "${CMAKE_CURRENT_BINARY_DIR}/index.wasm"
         "${CMAKE_CURRENT_BINARY_DIR}/triples-favicon.png"
         DESTINATION .)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    # iOS shares the Apple POSIX persistence (HOME resolves to the app's
+    # sandbox root, so ~/Library/Application Support/Triples lands in the
+    # writable per-app container). No trackpad shim — that's Cocoa/NSEvent,
+    # macOS-only — and no AppKit framework, which iOS doesn't ship.
+    target_sources(triples PRIVATE src/platform/persistence_posix.cpp)
+    target_link_libraries(triples PRIVATE "-framework CoreFoundation")
+    # iOS needs LSRequiresIPhoneOS, UIDeviceFamily, supported orientations,
+    # and (iOS 13+) UILaunchScreen — none of which CMake's default macOS
+    # Info.plist template carries. Use a fully custom plist instead.
+    configure_file(${CMAKE_SOURCE_DIR}/src/Info-iOS.plist.in
+                   ${CMAKE_CURRENT_BINARY_DIR}/Info-iOS.plist @ONLY)
+    set_target_properties(triples PROPERTIES
+        MACOSX_BUNDLE_INFO_PLIST            ${CMAKE_CURRENT_BINARY_DIR}/Info-iOS.plist
+        MACOSX_BUNDLE_BUNDLE_NAME           "Triples"
+        MACOSX_BUNDLE_BUNDLE_VERSION        "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING  "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_GUI_IDENTIFIER        "com.nullprogram.triples"
+        XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "com.nullprogram.triples"
+        XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY    "1,2"
+        # Skip code signing in the simulator build — local testing only.
+        XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY        ""
+        XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED     "NO"
+        XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED      "NO")
 elseif(APPLE)
     target_sources(triples PRIVATE
         src/platform/persistence_posix.cpp
@@ -152,7 +176,55 @@ else()
 endif()
 
 # --- Tests (desktop only) -----------------------------------------------------
-if(NOT EMSCRIPTEN)
+# Skip on web and on iOS — the test binary depends on building+linking on the
+# host, which neither toolchain is set up to run.
+if(NOT EMSCRIPTEN AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
     enable_testing()
     add_subdirectory(tests)
+endif()
+
+# --- Packaging via CPack ------------------------------------------------------
+# macOS: produces triples-<VERSION>.dmg containing Triples.app — the standard
+# drag-to-Applications install. The bundle is ad-hoc re-signed during install
+# because CPack's pipeline (install_name_tool rewrites, layout copies) breaks
+# the build-time signature; without re-signing Gatekeeper refuses to open the
+# app on first launch from /Applications.
+#
+# Windows (incl. the mingw cross): produces a ZIP with triples.exe inside.
+#
+# iOS isn't packaged via CPack — the deliverable for Simulator testing is the
+# Xcode-built .app directory, which `xcrun simctl install` handles directly.
+if(NOT EMSCRIPTEN AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    install(TARGETS triples
+        RUNTIME DESTINATION .
+        BUNDLE  DESTINATION .)
+
+    if(APPLE)
+        install(CODE [[
+            message(STATUS "Ad-hoc re-signing ${CMAKE_INSTALL_PREFIX}/triples.app")
+            execute_process(
+                COMMAND codesign --force --sign -
+                        "${CMAKE_INSTALL_PREFIX}/triples.app")
+        ]])
+    endif()
+
+    set(CPACK_PACKAGE_NAME                "triples")
+    set(CPACK_PACKAGE_VERSION             "${PROJECT_VERSION}")
+    set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Triples — a Threes! clone in C++/SDL3")
+    set(CPACK_PACKAGE_VENDOR              "nullprogram")
+    set(CPACK_VERBATIM_VARIABLES          YES)
+    set(CPACK_INCLUDE_TOPLEVEL_DIRECTORY  OFF)  # flat layout in the .dmg/.zip
+
+    if(APPLE)
+        set(CPACK_GENERATOR     "DragNDrop")
+        set(CPACK_DMG_VOLUME_NAME "Triples ${PROJECT_VERSION}")
+    elseif(WIN32)
+        set(CPACK_GENERATOR "ZIP")
+        # Friendlier filename than CMake's default "Windows-AMD64".
+        if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+            set(CPACK_SYSTEM_NAME "win64")
+        endif()
+    endif()
+
+    include(CPack)
 endif()

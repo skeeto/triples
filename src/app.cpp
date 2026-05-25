@@ -9,8 +9,18 @@
 #include "audio/sfx.hpp"
 #include "game/score.hpp"
 
+// The macOS trackpad shim is pure Cocoa/NSEvent — present on macOS only, NOT
+// on iOS (where APPLE is also true, but UIKit replaces AppKit and there's no
+// trackpad device anyway). Pin the include + call sites to TARGET_OS_OSX.
 #if defined(__APPLE__) && !defined(__EMSCRIPTEN__)
-#include "input/trackpad_macos.hpp"
+#  include <TargetConditionals.h>
+#  if TARGET_OS_OSX
+#    define TRIPLES_USE_MACOS_TRACKPAD 1
+#  endif
+#endif
+
+#ifdef TRIPLES_USE_MACOS_TRACKPAD
+#  include "input/trackpad_macos.hpp"
 #endif
 
 #ifdef __EMSCRIPTEN__
@@ -65,7 +75,7 @@ bool App::initialize() {
     audio_initialized_ = true;
 #endif
 
-#if defined(__APPLE__) && !defined(__EMSCRIPTEN__)
+#ifdef TRIPLES_USE_MACOS_TRACKPAD
     input::macos_trackpad_init(renderer_.sdl_window());
 #endif
 
@@ -486,7 +496,7 @@ bool App::tick() {
     SDL_Event e;
     while (SDL_PollEvent(&e)) handle_event_(e);
 
-#if defined(__APPLE__) && !defined(__EMSCRIPTEN__)
+#ifdef TRIPLES_USE_MACOS_TRACKPAD
     // Drain trackpad gesture events into synthetic pointer events. The shim
     // gives deltas; we anchor at the board center so the drag controller has
     // a sensible start position regardless of where the cursor sits.

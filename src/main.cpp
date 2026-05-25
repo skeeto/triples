@@ -1,4 +1,9 @@
 #include <SDL3/SDL.h>
+// Include once in the file with main() — on iOS this renames our `main` to
+// `SDL_main` and supplies the real entry point that calls UIApplicationMain.
+// On platforms that don't need a wrapper (Linux, macOS, Emscripten), the
+// header is a no-op.
+#include <SDL3/SDL_main.h>
 
 #include "app.hpp"
 

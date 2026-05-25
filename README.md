@@ -58,6 +58,67 @@ cmake --build --preset mingw
 
 `build-mingw/triples.exe` is a standalone, statically linked PE32+ binary.
 
+### iOS Simulator
+
+Requires Xcode + an iOS-Simulator runtime installed. The CMake build emits
+an Xcode project; `cmake --build` drives `xcodebuild` under the hood. We're
+targeting the Simulator only here — device builds need a paid Apple
+Developer signing identity and an Apple-issued provisioning profile.
+
+```sh
+# Configure (~2 minutes — SDL3 reconfigures for iOS the first time):
+cmake -G Xcode -S . -B build-ios \
+  -DCMAKE_SYSTEM_NAME=iOS \
+  -DCMAKE_OSX_SYSROOT=iphonesimulator \
+  -DCMAKE_OSX_ARCHITECTURES=arm64 \
+  -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0
+
+# Build the .app:
+cmake --build build-ios --config Release
+
+# Install into the booted Simulator and launch:
+open -a Simulator                # boots a default device if none is booted
+xcrun simctl install booted \
+  build-ios/Release-iphonesimulator/Triples.app
+xcrun simctl launch booted com.nullprogram.triples
+```
+
+On Intel Macs use `-DCMAKE_OSX_ARCHITECTURES=x86_64`. To build for a real
+device later, swap `iphonesimulator` → `iphoneos` and add your Apple
+Developer signing identity (you'll also need a registered bundle
+identifier and a provisioning profile from the Developer portal).
+
+`tools/genicon.cpp` doesn't yet emit iOS asset-catalog icons — the
+Simulator will show the default generic icon on the home screen until we
+wire that up.
+
+## Packaging
+
+For everything except iOS, CPack assembles the deliverable directly out of
+the build tree:
+
+```sh
+cmake -S . -B build
+cmake --build build
+(cd build && cpack)
+```
+
+- macOS: `triples-<VERSION>-Darwin.dmg` (DragNDrop). Mount it, drag
+  `Triples.app` to `/Applications`. The app is ad-hoc re-signed during
+  install so Gatekeeper allows the first launch.
+- Windows (native or mingw cross): `triples-<VERSION>-win64.zip` with
+  `triples.exe` inside.
+
+The web flavor doesn't use CPack — see the "Web (Emscripten)" section
+above for the `cmake --install` flow that drops the deployable files into
+a clean directory.
+
+iOS isn't packaged via CPack either: CPack has no .ipa generator, and for
+Simulator testing you just hand `xcrun simctl install` the `.app` from
+the build directly. Device + App Store distribution needs
+`xcodebuild archive` + `xcodebuild -exportArchive`, which is a separate
+flow tied to a real Apple Developer signing identity.
+
 ## Running tests
 
 The pure game logic is `#include <SDL3/SDL.h>`-free and unit-tested:

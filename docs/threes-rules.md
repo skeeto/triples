@@ -1,0 +1,144 @@
+# Threes! — Complete Technical Ruleset
+
+## TL;DR
+- **Threes!** (Sirvo LLC, released 6 Feb 2014; design by Asher Vollmer, art by Greg Wohlwend, music by Jimmy Hinson) is played on a fixed **4×4 grid** where each swipe slides every tile exactly **one cell** in one direction; only the **leading** pair per row/column can merge (1+2=3, and thereafter equal multiples of 3 double: 3+3=6, 6+6=12, …), up to a hard-coded ceiling of **6,144** (combining two 6,144s reveals a hidden 13th character — a triangle, representing 12,288 — and ends the game).
+- **New tiles** are drawn from a **shuffled "bag" of 12 cards: four 1s, four 2s, four 3s**, reshuffled when empty (reverse-engineered by TouchArcade user kamikaze28 in February 2014, summarised on Kotaku 13 Feb 2014). Once the **highest tile on the board reaches 48**, each draw has an exactly-modelled **1-in-21 probability** (per the hard-coded `#define HIGH_CARD_FREQ 21` in nneonneo's reverse-engineered C++ implementation) of being replaced by a **bonus tile** chosen uniformly from a 3-value sliding window topping out at **(highest tile) ÷ 8**.
+- The **next tile is previewed** above the board as a colour (blue = 1, red = 2, white = 3) plus a "+" symbol when a bonus tile is queued (added in the v1.1 update of late Feb 2014). The new tile always enters from the edge **opposite** the swipe direction, in a row/column chosen uniformly among those that actually moved; swipes where nothing slides or merges are rejected, and the game ends when no swipe in any direction produces a change.
+
+## Key Findings
+
+1. **Threes' merge rules are deliberately asymmetric.** Unlike 2048's "any two-of-a-kind merge," Threes has two distinct rules: **1 + 2 = 3** (different addends), then **n + n = 2n** for any n ≥ 3 that is a multiple of 3. Crucially, **1+1, 2+2, and 3+6 are all illegal**. This is the rule that Vollmer and Wohlwend protected across 14 months of iteration, and the rule that most clones (2048, 1024) discarded for simplicity.
+2. **Tiles slide one cell only, and only the leading pair merges.** Each swipe shifts every tile exactly one square (if possible) in the swiped direction. A row/column moves only if its leading tile can either (a) move into an empty cell ahead of it or (b) merge with the tile directly in front of it; otherwise that line is blocked and does not budge.
+3. **The deck is a 12-card "grab bag."** kamikaze28's data-mining of crowdsourced playthroughs in the TouchArcade forum thread #218248 (Feb 2014) established that Threes uses a Tetris-style 7-bag analogue: **12 cards (4×1, 4×2, 4×3)**, drawn without replacement, reshuffled on exhaustion. This is the **single most important departure from 2048**: skilled Threes players can count cards and predict the residue of the next 1–11 draws.
+4. **Bonus tile algorithm.** Reverse-engineered in nneonneo's open-source AI (`threes.cpp` / `threes.h` at github.com/nneonneo/threes-ai): once the maximum tile on the board reaches **rank 7 (value 48)**, each spawn has a **1 / HIGH_CARD_FREQ = 1/21** chance of being a bonus tile instead of a deck draw. The bonus value is chosen uniformly from a 3-value window topping out at (max tile)/8. Special small cases: max = 48 → only {6}; max = 96 → {6, 12}; max = 192 → {6, 12, 24}; …; max = 6144 → 3 consecutive values within {6, 12, 24, …, 768}. nneonneo's source comment explicitly reads `/* TODO: find out if this is actually how the random high tiles are drawn */`, so this is the **community best-guess, not officially confirmed by Sirvo**.
+5. **The preview is colour-only by design.** The "next" pane shows only the colour (blue / red / white). After the v1.1 update reported by TouchArcade on 13 Feb 2014, a "+" appears on white when the queued tile is a bonus, but the **specific bonus value is never revealed in the preview** — this preserves the randomness the developers deliberately built in.
+6. **Spawn position** (confirmed by developer Matt Rix, cited in Ryan Clark's strategy guide reprinted on Kotaku 13 Feb 2014): the new tile enters on the edge **opposite** the swipe direction, but only in rows/columns that actually moved. If exactly one row/column moved, the spawn cell is fixed; if multiple lines moved, one is chosen uniformly at random.
+7. **Scoring is exponential; only white tiles count.** kamikaze28's decoded formula: a tile of face value n = 3·2^k is worth **3^(k+1)** points. So 3 → 3, 6 → 9, 12 → 27, 24 → 81, …, 6144 → 531,441. Blue 1s and red 2s are worth zero. The total score is always a multiple of 3.
+8. **Maximum tile.** The game's UI supports tile values up to 6,144. Combining two 6,144s reveals the hidden 13th character and ends the game immediately. Without bonus tiles the no-bonus theoretical ceiling on a 4×4 board is **49,152** (nbickford), but with bonus tiles the game self-terminates at 12,288.
+
+## Details
+
+### 1. The Board and a Move
+
+- **Grid:** 4 rows × 4 columns = 16 cells.
+- **Starting position:** The opening board is generated by **drawing 9 cards from the initial deck** and placing them in 9 randomly-chosen cells; the remaining 7 cells start empty. This is documented in `initial_board()` in nneonneo's `threes.cpp` and matches in-game observation.
+- **Move:** A swipe in one of four directions (up / down / left / right). Every tile attempts to shift one cell in that direction. In each row (or column) processed from the leading edge inward:
+  - If the leading cell is empty and the second cell is non-empty, the second tile slides forward.
+  - If two leading tiles form a valid merge pair (1+2, 2+1, or two equal tiles ≥ 3), they combine into the doubled value.
+  - Otherwise the leading pair is "stuck" and that row/column does not move.
+- **Only the leading pair merges per swipe per line.** A row like `3 3 3 0` swiped right becomes `0 3 3 6`, never `0 0 6 6` — Threes does not chain merges. This is the main reason Threes is harder than 2048.
+- **Rejected moves:** If no row or column can move in the swiped direction, the swipe is ignored; no tile spawns and the turn is not consumed.
+- **Game end:** The game ends when **all four directions are rejected** — i.e., the board is full and no adjacent pair can merge. There is no "game over" splash screen; the final score is shown directly.
+- **Slow-drag preview:** Touching the board and dragging slowly without releasing previews the move (overlapping tiles indicate a merge). Returning the finger to the start cancels the move.
+
+### 2. The Deck / "Bag" System
+
+In Evan Narcisse's Kotaku article *"Tips for Playing Threes, the New Mobile Game Everyone's Talking About"* (published 13 Feb 2014, reprinting Ryan Clark's strategy guide with Clark credited as designer of *Crypt of the NecroDancer*), Clark summarises kamikaze28's analysis of crowdsourced TouchArcade logs:
+
+> "It seems that the game makes a 'stack' of twelve cards containing four 1s, four 2s, and four 3s. It then gives you a card selected from that stack at random. When the stack has run out, a new stack of twelve is created and you begin again."
+
+Implications:
+- In any 12-card sequence, you always see exactly four 1s, four 2s and four 3s.
+- The longest theoretical run of one colour is **8 in a row** (end of one bag + start of the next). The most ever observed in play is six.
+- Skilled players can count cards: if the board shows e.g. four unpaired 1s and only one 2, the next 4–8 draws will rebalance.
+
+### 3. Bonus Tiles (white tiles > 3)
+
+**Activation threshold.** Bonus tiles become possible once the highest tile on the board reaches **48 (rank 7)** — equivalently, "highest > 24."
+
+**Probability per draw.** From `threes.h` in nneonneo's GitHub AI repository:
+
+```
+#define HIGH_CARD_FREQ 21
+```
+
+and in `threes.cpp`:
+
+```c
+if (maxrank >= 7 && unif_random(HIGH_CARD_FREQ) == 0) {
+    /* draw a bonus tile */
+} else {
+    /* draw from the deck */
+}
+```
+
+So the exactly-modelled probability is **1/21 ≈ 4.76%** per spawn that the next tile is a bonus rather than a deck draw. Ryan Clark's earlier looser estimate ("once in every 24 cards or so") describes the same phenomenon from smaller data.
+
+**Bonus value selection.** Let T be the current maximum tile on the board.
+- T = 48 → bonus is always **6**.
+- T = 96 → bonus uniform over **{6, 12}**.
+- T ≥ 192 → bonus uniform over a **3-value sliding window** chosen randomly within {6, 12, …, T/8}. (In nneonneo's code: `tileset = 7 << (unif_random(maxrank-8)+4)` — three consecutive bits at a uniformly random offset.)
+
+So with T = 6144, the bonus tile is one of any 3 consecutive values from {6, 12, 24, 48, 96, 192, 384, 768} — the cap of **T/8 = 768** is never exceeded.
+
+**Important caveat.** nneonneo's code comment reads `/* TODO: find out if this is actually how the random high tiles are drawn */`. The 1/21 figure and the 3-value-window model are the community's best inference from kamikaze28's reverse-engineering; Asher Vollmer and Sirvo have never published the official constants.
+
+### 4. The Upcoming-Tile Preview
+
+The preview indicator above the board is deliberately information-sparse:
+- **Blue card** → next tile is a 1.
+- **Red card** → next tile is a 2.
+- **White card without "+"** → next tile is a 3.
+- **White card with "+"** → next tile is a bonus tile (some value ≥ 6); the exact value is **not** revealed.
+
+The "+" indicator was added in a free update reported by TouchArcade on 13 February 2014 in the article *"'Threes!' Is Getting The Way it Displays The Next Card Tweaked,"* which noted: "per a tweet of a screenshot of an iMessage conversation (You know, how you announce things in 2014!) between developers Asher Vollmer and Greg Wohlwend." The update itself shipped roughly two weeks later. Before the change, a white preview simply meant "3 or higher" with no further distinction.
+
+**No look-ahead beyond one tile** is ever shown — but because the deck has only 12 known cards, players can effectively peer further by counting.
+
+### 5. Spawn Position
+
+After a valid swipe, exactly one tile is added to the board. Per developer Matt Rix (cited in Ryan Clark's Kotaku guide) and confirmed by nneonneo's AI code:
+
+- The new tile enters from the **opposite edge** of the swipe direction (swipe up → new tile somewhere on the bottom row; swipe left → new tile in the rightmost column; etc.).
+- Only **rows or columns that actually moved** are eligible spawn lines.
+- If exactly one row/column moved, the spawn cell is fixed (the single emptied edge cell in that line).
+- If two or more rows/columns moved, the engine picks one uniformly at random, and the new tile occupies the now-empty edge cell of that chosen line.
+
+This is why the slow-drag preview is so valuable: experienced players make swipes that constrain spawn to favourable rows.
+
+### 6. Edge Cases & Tie-Breaking
+
+- **Rejected move:** No turn consumed, no tile spawned, board unchanged.
+- **Game-over condition:** All four swipes rejected; final score tallied immediately.
+- **12,288 tile:** Combining two 6,144s reveals a hidden 13th character (a triangle, not labelled "12,288"). When this occurs the game **immediately ends regardless of remaining moves**, and points are tallied normally. This feat was first publicly documented by Twitter user "Threesporn" in 2017 and acknowledged by Asher Vollmer.
+- **Maximum tile / ceiling:** Without bonus tiles the largest mathematically achievable tile is **49,152** (nbickford's analysis); with bonus tiles the game self-terminates at 12,288. kamikaze28's "ultimate realistic" end state — 6144, 6144, 6144, 6144, 6144, 3072, 1536, 768, 384, 192, 96, 48, 24, 12, 6, 3 — would score **2,922,942 points**; the absolute legitimate maximum, requiring an essentially impossible game where the final spawn fills the grid with a 6144, was calculated by TouchArcade forum user mr_bez at **8,503,056**.
+- **Score formula:** For a white tile of value n = 3 · 2^k (k = 0, 1, 2, …, 11 for 3, 6, 12, …, 6144), value = **3^(k+1)**. Equivalently, value = 3^(log₂(n/3) + 1). Examples: 3 → 3, 6 → 9, 12 → 27, 24 → 81, 48 → 243, 96 → 729, 192 → 2,187, 384 → 6,561, 768 → 19,683, 1536 → 59,049, 3072 → 177,147, 6144 → **531,441**. Blue 1s and red 2s contribute 0. Total = sum.
+- **Reshuffle/preview interaction:** The deck draw that determines the preview is the same draw that becomes the next tile — there is no separate sampling. When the bag reaches its final card, that card is previewed, and the reshuffle happens immediately afterward.
+- **Bonus-tile/preview interaction:** The bonus-tile coin-flip (1/21) is made *before* the preview is shown. If the result is "bonus," the preview shows white with "+" and the specific bonus value is sampled then.
+
+### Distinguishing Threes from 2048
+
+| Rule | Threes! | 2048 |
+|---|---|---|
+| Smallest merge | 1 + 2 = 3 (different values) | 2 + 2 = 4 (same values) |
+| Tile slide | One cell per swipe | All the way to the wall |
+| Multiple merges per line per swipe | No | Yes |
+| Spawn source | 12-card bag (4 × 1, 4 × 2, 4 × 3) plus bonus mechanic | 2 (90%) or 4 (10%), uniform |
+| Spawn location | Edge opposite swipe, moving lines only | Anywhere empty |
+| Preview of next tile | Yes (colour + "+") | No |
+| Win/end tile | Game ends at 12,288 | "Win" message at 2048; continue allowed |
+
+This table illustrates why, in their 45,000-word public postmortem (published c. 27 March 2014 at asherv.com/threes/threemails/, the release of which was covered by TechCrunch's article *"Threes' Creators Publish An Epic Work Log To Show How Frustrating It Is To Be Cloned"* on 27 March 2014), Vollmer and Wohlwend characterised 2048 as a strictly simpler descendant — the spawn-location and bag mechanics in particular took months of design iteration in Threes.
+
+## Recommendations
+
+For someone implementing or analysing Threes:
+
+1. **If you are building a clone or fan implementation**, start with the deck-of-12 bag (4 × 1, 4 × 2, 4 × 3), reshuffle on exhaustion, and use the spawn-on-opposite-edge / uniform-among-moving-lines rule. These two design choices distinguish Threes from 2048 more than anything else, and skipping them produces the easier "2048-like" experience the original developers explicitly criticised.
+2. **For the bonus tile, use HIGH_CARD_FREQ = 21** (i.e., 1/21 per spawn once max ≥ 48) and the 3-value sliding window topping at max/8, but disclose that this is reverse-engineered, not official. If you need an authoritative source, cite nneonneo's `threes.cpp` and `threes.h` plus kamikaze28's TouchArcade analysis.
+3. **If you are writing an AI**, model the deck state as part of the game state (it materially changes expectimax results) and incorporate the "+" preview when the max tile ≥ 48. nneonneo's open-source AI is the reference implementation; per its GitHub README, "it has successfully attained the 6144 tile multiple times … The top score (at time of writing) is 775,524 points."
+4. **If you are documenting the game for players**, the single most counter-intuitive rule to emphasise is that **tiles slide only one cell per swipe** — this is the rule new players (especially those coming from 2048) most often miss.
+5. **For research on game design**: treat the bonus-tile mechanic as a controlled long-tail injection. Without it the game is a near-deterministic-deck problem; with it, the developers retain a small amount of unpredictability proportional to the player's progress.
+
+**Thresholds that should change a recommendation:**
+- If Sirvo (or a decompilation of the iOS binary) ever publishes the actual constants, replace the 1/21 figure if it differs.
+- If the Apple Arcade re-release **Threes!+** (released 2 April 2021) altered the algorithm — nneonneo writes that "Threes! is in general a bit of a moving target as the random tile generation algorithms are occasionally tweaked" — perform a version-specific analysis before quoting numbers in production code.
+
+## Caveats
+
+- **The bonus-tile probability and value-distribution are reverse-engineered, not officially documented.** Two community estimates coexist: **1/21** (nneonneo's hard-coded code constant `#define HIGH_CARD_FREQ 21` and nbickford's blog) and **~1/24** (Ryan Clark's earlier looser estimate "once in every 24 cards or so"). The 1/21 figure is the more rigorously derived; both are within statistical noise of one another.
+- **The 12-card deck composition (4 / 4 / 4) is also reverse-engineered**, though the evidence (millions of recorded draws fitting the model precisely) is very strong, and the developers have never disputed it.
+- **The exact behaviour when ties occur in spawn-cell selection** (multiple eligible cells in multiple moving lines) is reported as uniform random in all community analyses, but the underlying RNG is not seeded publicly.
+- **The algorithm may have been tweaked across versions.** The "+" preview was added in February 2014; the value range for bonus tiles and other constants may have shifted in later updates and in the 2021 Threes!+ Apple Arcade re-release. The figures above describe the early-to-mid-2014 state best documented in primary community analysis.
+- **The 12,288 / game-end trigger** has been confirmed publicly by Asher Vollmer (acknowledging Twitter user Threesporn's 2017 documentation) but is rarely seen — only a handful of players have ever combined two 6,144s.
+- **Scoring formula and maximum tile** are uncontested and match what the in-game leaderboard returns; legitimate scores are always divisible by 3.

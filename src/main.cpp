@@ -1,0 +1,34 @@
+#include <SDL3/SDL.h>
+
+#include "app.hpp"
+
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
+
+namespace {
+
+triples::App* g_app = nullptr;
+
+#ifdef __EMSCRIPTEN__
+void web_tick() {
+    if (g_app) g_app->tick();
+}
+#endif
+
+}  // namespace
+
+int main(int /*argc*/, char* /*argv*/[]) {
+    triples::App app;
+    if (!app.initialize()) return 1;
+    g_app = &app;
+
+#ifdef __EMSCRIPTEN__
+    // Let requestAnimationFrame drive the rate (0 = use rAF).
+    emscripten_set_main_loop(web_tick, 0, 1);
+    return 0;
+#else
+    while (app.tick()) {}
+    return 0;
+#endif
+}

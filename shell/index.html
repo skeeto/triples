@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Triples</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#1a1a1a">
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    width: 100%;
+    background: #1a1a1a;
+    overscroll-behavior: none;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: rgba(0,0,0,0);
+    overflow: hidden;
+  }
+  #canvas {
+    display: block;
+    width: 100vw;
+    height: 100vh;
+    touch-action: none;
+    outline: none;
+    border: 0;
+    background: #1a1a1a;
+  }
+</style>
+</head>
+<body>
+<canvas id="canvas" tabindex="0" oncontextmenu="event.preventDefault()"></canvas>
+<script>
+  (function () {
+    const canvas = document.getElementById('canvas');
+    function sync() {
+      const dpr = window.devicePixelRatio || 1;
+      const w = window.innerWidth, h = window.innerHeight;
+      canvas.width  = Math.floor(w * dpr);
+      canvas.height = Math.floor(h * dpr);
+      canvas.style.width  = w + 'px';
+      canvas.style.height = h + 'px';
+    }
+    sync();
+    window.addEventListener('resize', sync);
+    canvas.addEventListener('touchstart',  e => e.preventDefault(), {passive: false});
+    canvas.addEventListener('touchmove',   e => e.preventDefault(), {passive: false});
+    canvas.addEventListener('touchend',    e => e.preventDefault(), {passive: false});
+    canvas.addEventListener('gesturestart', e => e.preventDefault());
+
+    window.Module = {
+      canvas: canvas,
+      print: function (m) { console.log(m); },
+      printErr: function (m) { console.warn(m); },
+    };
+  })();
+</script>
+{{{ SCRIPT }}}
+</body>
+</html>

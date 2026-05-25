@@ -53,6 +53,21 @@
     canvas.addEventListener('touchend',    e => e.preventDefault(), {passive: false});
     canvas.addEventListener('gesturestart', e => e.preventDefault());
 
+    // Browser autoplay policy keeps SDL3's AudioContext "suspended" until a
+    // user gesture lets us resume it. SDL3 stashes the context at
+    // Module.SDL3.audioContext — nudge it on every gesture (cheap, idempotent).
+    function unlockAudio() {
+      try {
+        var ctx = window.Module && window.Module.SDL3 && window.Module.SDL3.audioContext;
+        if (ctx && typeof ctx.resume === 'function' && ctx.state === 'suspended') {
+          ctx.resume();
+        }
+      } catch (e) {}
+    }
+    ['pointerdown', 'touchstart', 'mousedown', 'keydown'].forEach(function (t) {
+      document.addEventListener(t, unlockAudio, {capture: true, passive: true});
+    });
+
     window.Module = {
       canvas: canvas,
       print: function (m) { console.log(m); },

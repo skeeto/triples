@@ -134,6 +134,11 @@ void Renderer::recompute_layout_() {
 
     layout_.cell_w = cell_w;
     layout_.cell_h = cell_h;
+    // ~1.6% inset on each side — a couple of pixels at typical mobile sizes,
+    // enough to make adjacent tiles visibly separate without losing room.
+    layout_.tile_inset = std::max(1.0f, std::floor(cell_w * 0.016f));
+    layout_.tile_w = cell_w - layout_.tile_inset * 2.0f;
+    layout_.tile_h = cell_h - layout_.tile_inset * 2.0f;
     layout_.board_w = cell_w * 4.0f;
     layout_.board_h = cell_h * 4.0f;
     layout_.board_x = std::floor((layout_.win_w - layout_.board_w) * 0.5f);
@@ -143,7 +148,9 @@ void Renderer::recompute_layout_() {
 }
 
 void Renderer::ensure_cache_() {
-    int desired = static_cast<int>(layout_.cell_w);
+    // Bake at the rendered tile size (cell minus inset on each side), so the
+    // texture maps 1:1 to its destination rect.
+    int desired = static_cast<int>(layout_.tile_w);
     if (desired <= 8) desired = 8;
     if (desired == baked_cell_w_) return;
     tiles_.bake(sdl_renderer_, desired);
@@ -184,9 +191,9 @@ void Renderer::draw_empty_slots_() {
         int r, c;
         to_rc(i, r, c);
         SDL_FRect dst{
-            layout_.board_x + c * layout_.cell_w,
-            layout_.board_y + r * layout_.cell_h,
-            layout_.cell_w, layout_.cell_h,
+            layout_.board_x + c * layout_.cell_w + layout_.tile_inset,
+            layout_.board_y + r * layout_.cell_h + layout_.tile_inset,
+            layout_.tile_w, layout_.tile_h,
         };
         SDL_RenderTexture(sdl_renderer_, empty_slot_tex_, nullptr, &dst);
     }
@@ -199,10 +206,10 @@ void Renderer::draw_one_tile_(std::uint8_t rank, float center_x, float center_y,
     if (!t) return;
     SDL_SetTextureAlphaMod(t, alpha);
     SDL_FRect dst{
-        center_x - layout_.cell_w * 0.5f * scale_x,
-        center_y - layout_.cell_h * 0.5f * scale_y,
-        layout_.cell_w * scale_x,
-        layout_.cell_h * scale_y,
+        center_x - layout_.tile_w * 0.5f * scale_x,
+        center_y - layout_.tile_h * 0.5f * scale_y,
+        layout_.tile_w * scale_x,
+        layout_.tile_h * scale_y,
     };
     SDL_RenderTexture(sdl_renderer_, t, nullptr, &dst);
 
@@ -221,17 +228,17 @@ void Renderer::draw_one_tile_(std::uint8_t rank, float center_x, float center_y,
     } else if (rank == 15) {
         tr = 0xFF; tg = 0xFF; tb = 0xFF;
     }
-    // Scale the tile number proportionally to the cell. Target line height
-    // is ~50% of cell height; if the number is too wide for the tile (long
-    // values like 6144 on a narrow cell), shrink to fit.
+    // Scale the tile number proportionally to the tile. Target line height
+    // is ~50% of tile height; if the number is too wide for the tile (long
+    // values like 6144 on a narrow tile), shrink to fit.
     const TextAtlas::Size sz = TextAtlas::Size::Large;
-    float scale = (layout_.cell_h * 0.50f) / text_digits_.line_height(sz);
+    float scale = (layout_.tile_h * 0.50f) / text_digits_.line_height(sz);
     float w = text_digits_.measure_width(buf, sz, scale);
-    const float max_w = layout_.cell_w * 0.82f;
+    const float max_w = layout_.tile_w * 0.82f;
     if (w > max_w) scale *= max_w / w;
     float h = text_digits_.line_height(sz, scale);
     // Center text vertically in the upper ~78% of the tile (above the bottom band).
-    float text_center_y = center_y - layout_.cell_h * 0.5f + (layout_.cell_h * 0.78f) * 0.5f;
+    float text_center_y = center_y - layout_.tile_h * 0.5f + (layout_.tile_h * 0.78f) * 0.5f;
     float baseline_y = text_center_y + h * 0.32f;
     text_digits_.draw_centered(sdl_renderer_, buf, sz, center_x, baseline_y,
                                tr, tg, tb, alpha, scale);
@@ -388,7 +395,7 @@ void Renderer::draw_tally_(const Animations& anims) {
         int row, col;
         to_rc(L.cell, row, col);
         float cx = layout_.board_x + col * layout_.cell_w + layout_.cell_w * 0.5f;
-        float top_y = layout_.board_y + row * layout_.cell_h;
+        float top_y = layout_.board_y + row * layout_.cell_h + layout_.tile_inset;
 
         char buf[24];
         std::size_t n;
@@ -400,12 +407,12 @@ void Renderer::draw_tally_(const Animations& anims) {
         std::string_view label(text, n + 1);
 
         // Distinctly smaller than the tile number — the +N is supporting
-        // info, not the headline. ~22% of cell height (vs 50% for the tile),
+        // info, not the headline. ~22% of tile height (vs 50% for the tile),
         // allowed to spill up to 15% past the tile width.
         const TextAtlas::Size sz = TextAtlas::Size::Large;
-        float scale = (layout_.cell_h * 0.22f) / text_digits_.line_height(sz);
+        float scale = (layout_.tile_h * 0.22f) / text_digits_.line_height(sz);
         float label_w = text_digits_.measure_width(label, sz, scale);
-        const float max_w = layout_.cell_w * 1.15f;
+        const float max_w = layout_.tile_w * 1.15f;
         if (label_w > max_w) scale *= max_w / label_w;
 
         // Position: the label sits ON the tile in its upper-most strip, with

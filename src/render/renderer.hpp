@@ -16,7 +16,12 @@ namespace triples::render {
 // Layout in device pixels for the current frame.
 struct Layout {
     float win_w = 0.0f, win_h = 0.0f;
-    float cell_w = 0.0f, cell_h = 0.0f;     // tile dimensions (2:3 ratio)
+    float cell_w = 0.0f, cell_h = 0.0f;     // slot the tile lives in (2:3 ratio)
+    // The tile itself is slightly smaller than its cell so there's a visible
+    // gap between adjacent tiles. cell rect = (cell_x, cell_y, cell_w, cell_h);
+    // tile rect = the same inset by tile_inset on every side.
+    float tile_inset = 0.0f;
+    float tile_w = 0.0f, tile_h = 0.0f;
     float board_x = 0.0f, board_y = 0.0f;   // top-left of board area in pixels
     float board_w = 0.0f, board_h = 0.0f;
     float hud_top_y = 0.0f;                 // baseline area for top HUD

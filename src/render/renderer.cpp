@@ -681,7 +681,12 @@ void Renderer::draw_hud_(const game::GameState& state, std::uint64_t high_score,
     format_int(high_score, buf, sizeof(buf), n);
     std::string_view best_str(buf, n);
     {
-        const TextAtlas::Size sz = TextAtlas::Size::Body;
+        // Source from Large (96 px) rather than Body (48 px) — on iOS the HUD
+        // row is tall enough that a Body-sourced glyph ends up scaled ~2×, well
+        // into bilinear-upscale blur territory. The 0.55 row-height ratio
+        // keeps BEST visibly smaller than the 0.70-ratio SCORE; same final
+        // pixel size as before on iOS, just sourced from a sharper bake.
+        const TextAtlas::Size sz = TextAtlas::Size::Large;
         float scale = (row_height * 0.55f) / text_.line_height(sz);
         constexpr float kRightPad = 12.0f;
         const float right_room =

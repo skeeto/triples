@@ -25,21 +25,23 @@ public:
                     const unsigned char* ttf_data, std::size_t ttf_size,
                     float small_px, float body_px, float large_px);
 
-    // Measure pixel width of `text` at the given size. Height is the line
-    // height at that size (set by initialize()).
-    float measure_width(std::string_view text, Size sz) const;
-    float line_height(Size sz) const;
-    float baseline(Size sz) const;
+    // Measure pixel width / line metrics of `text` at the given size. All
+    // three accept an optional `scale` so callers can render at any size
+    // without re-baking the atlas — scale > 1 upscales (slightly blurry past
+    // ~2×), scale < 1 downscales smoothly.
+    float measure_width(std::string_view text, Size sz, float scale = 1.0f) const;
+    float line_height(Size sz, float scale = 1.0f) const;
+    float baseline(Size sz, float scale = 1.0f) const;
 
     // Draw `text` at (x, y) — y is the BASELINE. Color is RGBA.
     void draw(SDL_Renderer* r, std::string_view text, Size sz,
               float x, float y, std::uint8_t cr, std::uint8_t cg, std::uint8_t cb,
-              std::uint8_t ca = 255) const;
+              std::uint8_t ca = 255, float scale = 1.0f) const;
 
     // Convenience: draw centered at (cx, baseline_y).
     void draw_centered(SDL_Renderer* r, std::string_view text, Size sz,
                        float cx, float baseline_y, std::uint8_t cr, std::uint8_t cg,
-                       std::uint8_t cb, std::uint8_t ca = 255) const;
+                       std::uint8_t cb, std::uint8_t ca = 255, float scale = 1.0f) const;
 
 private:
     struct Impl;

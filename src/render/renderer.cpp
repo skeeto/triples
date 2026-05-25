@@ -91,8 +91,10 @@ bool Renderer::initialize(const char* title, int initial_w, int initial_h) {
     SDL_GetWindowSizeInPixels(window_, &w, &h);
     set_logical_size(w, h);
 
+    // Atlas baked at sizes large enough for the typical high-DPI tile —
+    // the renderer scales each draw down (or up) to fit the current cell.
     if (!text_.initialize(sdl_renderer_, font_inter_bold_data, font_inter_bold_size,
-                          22.0f, 34.0f, 68.0f)) {
+                          32.0f, 48.0f, 96.0f)) {
         std::fprintf(stderr, "TextAtlas::initialize failed\n");
         return false;
     }
@@ -210,21 +212,21 @@ void Renderer::draw_one_tile_(std::uint8_t rank, float center_x, float center_y,
     } else if (rank == 15) {
         tr = 0xFF; tg = 0xFF; tb = 0xFF;
     }
-    // Pick a font size that fits the tile width.
-    TextAtlas::Size sz = TextAtlas::Size::Large;
-    if (layout_.cell_w < 68.0f) sz = TextAtlas::Size::Body;
-    if (layout_.cell_w < 36.0f) sz = TextAtlas::Size::Small;
-
-    float w = text_.measure_width(buf, sz);
-    while (w > layout_.cell_w * 0.85f && sz != TextAtlas::Size::Small) {
-        sz = (sz == TextAtlas::Size::Large) ? TextAtlas::Size::Body : TextAtlas::Size::Small;
-        w = text_.measure_width(buf, sz);
-    }
-    float h = text_.line_height(sz);
+    // Scale the tile number proportionally to the cell. Target line height
+    // is 55% of cell height (a touch under original Threes' chunky digits);
+    // if the number is too wide for the tile (long values like 6144 on a
+    // narrow cell), shrink to fit.
+    const TextAtlas::Size sz = TextAtlas::Size::Large;
+    float scale = (layout_.cell_h * 0.55f) / text_.line_height(sz);
+    float w = text_.measure_width(buf, sz, scale);
+    const float max_w = layout_.cell_w * 0.82f;
+    if (w > max_w) scale *= max_w / w;
+    float h = text_.line_height(sz, scale);
     // Center text vertically in the upper ~78% of the tile (above the bottom band).
     float text_center_y = center_y - layout_.cell_h * 0.5f + (layout_.cell_h * 0.78f) * 0.5f;
     float baseline_y = text_center_y + h * 0.32f;
-    text_.draw_centered(sdl_renderer_, buf, sz, center_x, baseline_y, tr, tg, tb, alpha);
+    text_.draw_centered(sdl_renderer_, buf, sz, center_x, baseline_y,
+                        tr, tg, tb, alpha, scale);
 }
 
 void Renderer::draw_tiles_(const game::GameState& state, const input::DragController& drag,
@@ -389,37 +391,33 @@ void Renderer::draw_tally_(const Animations& anims) {
         std::memcpy(text + 1, buf, n);
         std::string_view label(text, n + 1);
 
-        // Same size as tile text — fall back smaller only if the label is
-        // visibly too wide (it can spill slightly past the tile width).
-        TextAtlas::Size sz = TextAtlas::Size::Large;
-        if (layout_.cell_w < 68.0f) sz = TextAtlas::Size::Body;
-        if (layout_.cell_w < 36.0f) sz = TextAtlas::Size::Small;
-        while (text_.measure_width(label, sz) > layout_.cell_w * 1.15f
-               && sz != TextAtlas::Size::Small) {
-            sz = (sz == TextAtlas::Size::Large) ? TextAtlas::Size::Body
-                                                : TextAtlas::Size::Small;
-        }
+        // Match the tile number's scaling, but allow the +N to spill up to
+        // 15% past the tile width (the label can extend slightly outside).
+        const TextAtlas::Size sz = TextAtlas::Size::Large;
+        float scale = (layout_.cell_h * 0.55f) / text_.line_height(sz);
+        float label_w = text_.measure_width(label, sz, scale);
+        const float max_w = layout_.cell_w * 1.15f;
+        if (label_w > max_w) scale *= max_w / label_w;
 
-        // Position: text sits inside the upper portion of the tile, with just
-        // the top of the glyphs peeking past the tile's top edge.
-        float ascent      = text_.baseline(sz);
+        // Position: text sits inside the upper portion of the tile, with
+        // just the top of the glyphs peeking past the tile's top edge.
+        float ascent      = text_.baseline(sz, scale);
         float baseline    = top_y - 4.0f + ascent;
-        // Small drop-in: starts 6 px lower (above final), settles to final.
         baseline -= (1.0f - fade_in) * 6.0f;
 
         std::uint8_t a = static_cast<std::uint8_t>(fade_in * 255.0f);
-        // 8-direction black outline so the yellow reads on any tile color.
-        const float o = 2.0f;
+        // Outline width scales with the font so the stroke stays proportional.
+        const float o = std::max(2.0f, scale * 2.5f);
         const float offs[8][2] = {{-o,0},{o,0},{0,-o},{0,o},
                                   {-o,-o},{o,-o},{-o,o},{o,o}};
         for (const auto& off : offs) {
             text_.draw_centered(sdl_renderer_, label, sz,
                                 cx + off[0], baseline + off[1],
-                                0x00, 0x00, 0x00, a);
+                                0x00, 0x00, 0x00, a, scale);
         }
         // Yellow fill (white-tile edge color).
         text_.draw_centered(sdl_renderer_, label, sz, cx, baseline,
-                            0xFF, 0xCC, 0x66, a);
+                            0xFF, 0xCC, 0x66, a, scale);
     }
 }
 

@@ -12,8 +12,8 @@ namespace triples::render {
 
 namespace {
 
-constexpr int kAtlasW = 512;
-constexpr int kAtlasH = 512;
+constexpr int kAtlasW = 1024;
+constexpr int kAtlasH = 1024;
 constexpr int kFirstChar = 32;
 constexpr int kCharCount = 0x7E - kFirstChar + 1;
 
@@ -91,7 +91,7 @@ bool TextAtlas::initialize(SDL_Renderer* r,
     return true;
 }
 
-float TextAtlas::measure_width(std::string_view text, Size sz) const {
+float TextAtlas::measure_width(std::string_view text, Size sz, float scale) const {
     if (!impl_) return 0.0f;
     const BakedSize* b = impl_->by_size(sz);
     float x = 0.0f, y = 0.0f;
@@ -103,28 +103,29 @@ float TextAtlas::measure_width(std::string_view text, Size sz) const {
                            kAtlasW, kAtlasH,
                            static_cast<int>(ch) - kFirstChar, &x, &y, &q, 1);
     }
-    return x;
+    return x * scale;
 }
 
-float TextAtlas::line_height(Size sz) const {
+float TextAtlas::line_height(Size sz, float scale) const {
     if (!impl_) return 0.0f;
-    return impl_->by_size(sz)->line;
+    return impl_->by_size(sz)->line * scale;
 }
 
-float TextAtlas::baseline(Size sz) const {
+float TextAtlas::baseline(Size sz, float scale) const {
     if (!impl_) return 0.0f;
-    return impl_->by_size(sz)->ascent;
+    return impl_->by_size(sz)->ascent * scale;
 }
 
 void TextAtlas::draw(SDL_Renderer* r, std::string_view text, Size sz,
                      float x, float y, std::uint8_t cr, std::uint8_t cg, std::uint8_t cb,
-                     std::uint8_t ca) const {
+                     std::uint8_t ca, float scale) const {
     if (!impl_) return;
     const BakedSize* b = impl_->by_size(sz);
     if (!b->tex) return;
     SDL_SetTextureColorMod(b->tex, cr, cg, cb);
     SDL_SetTextureAlphaMod(b->tex, ca);
-    float pen_x = x, pen_y = y;
+    // Run the pen in baked space (scale=1) and scale quad output around (x, y).
+    float pen_x = 0.0f, pen_y = 0.0f;
     for (char c : text) {
         unsigned ch = static_cast<unsigned char>(c);
         if (ch < kFirstChar || ch >= kFirstChar + kCharCount) continue;
@@ -134,16 +135,18 @@ void TextAtlas::draw(SDL_Renderer* r, std::string_view text, Size sz,
                            static_cast<int>(ch) - kFirstChar, &pen_x, &pen_y, &q, 1);
         SDL_FRect src{q.s0 * kAtlasW, q.t0 * kAtlasH,
                       (q.s1 - q.s0) * kAtlasW, (q.t1 - q.t0) * kAtlasH};
-        SDL_FRect dst{q.x0, q.y0, q.x1 - q.x0, q.y1 - q.y0};
+        SDL_FRect dst{x + q.x0 * scale, y + q.y0 * scale,
+                      (q.x1 - q.x0) * scale, (q.y1 - q.y0) * scale};
         SDL_RenderTexture(r, b->tex, &src, &dst);
     }
 }
 
 void TextAtlas::draw_centered(SDL_Renderer* r, std::string_view text, Size sz,
                               float cx, float baseline_y, std::uint8_t cr,
-                              std::uint8_t cg, std::uint8_t cb, std::uint8_t ca) const {
-    float w = measure_width(text, sz);
-    draw(r, text, sz, cx - w * 0.5f, baseline_y, cr, cg, cb, ca);
+                              std::uint8_t cg, std::uint8_t cb, std::uint8_t ca,
+                              float scale) const {
+    float w = measure_width(text, sz, scale);
+    draw(r, text, sz, cx - w * 0.5f, baseline_y, cr, cg, cb, ca, scale);
 }
 
 }  // namespace triples::render

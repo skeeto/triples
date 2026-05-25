@@ -5,6 +5,12 @@ plugins {
 android {
     namespace      "com.nullprogram.triples"
     compileSdkVersion 35
+    // Pinned to the version Homebrew's android-ndk cask currently ships.
+    // AGP defaults to an older version it expects in the SDK's ndk/ subdir;
+    // without this pin AGP rejects the brew-installed NDK as "wrong version".
+    // Bump if `brew upgrade android-ndk` lands a newer revision (see
+    // /opt/homebrew/share/android-ndk/source.properties).
+    ndkVersion "29.0.14206865"
     defaultConfig {
         applicationId  "com.nullprogram.triples"
         minSdkVersion    21
@@ -33,9 +39,14 @@ android {
     // CMakeLists.txt indirection. Our CMakeLists has an `if(ANDROID)`
     // branch that builds `libtriples.so` as a SHARED library plus a
     // shared `libSDL3.so` alongside it.
+    //
+    // AGP's default CMake (3.22.1) is older than our cmake_minimum_required
+    // (3.24). Pin a newer version that we install via:
+    //   sdkmanager "cmake;3.30.5"
     externalNativeBuild {
         cmake {
             path "../../CMakeLists.txt"
+            version "3.30.5"
         }
     }
     lint {

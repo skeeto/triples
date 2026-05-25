@@ -106,22 +106,45 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 The APK ships with both `arm64-v8a` (any modern phone) and `x86_64`
 (Android Studio's emulator on Apple Silicon hosts) ABI variants.
 
-**Prereqs.** Beyond `brew install --cask android-studio android-ndk`:
+**Prereqs.** Three Homebrew installs:
 
-1. Launch `Android Studio.app` once and let the setup wizard install
-   the SDK (it lands at `~/Library/Android/sdk`). You only need the
-   "Android SDK Platform 35" + "Android SDK Build-Tools" + "Android
-   SDK Platform-Tools" components — Studio installs them by default.
-2. Tell Gradle where the SDK lives: create `android-project/local.properties`
-   with one line:
+```sh
+brew install --cask android-ndk android-commandlinetools
+brew install openjdk@21       # AGP 8 + Gradle 8.12 want JDK 17 or 21,
+                              # NOT the current homebrew openjdk (26)
+```
 
-       sdk.dir=/Users/<you>/Library/Android/sdk
+(`android-studio` works in place of `android-commandlinetools` — Studio
+ships an SDK Manager. But the commandlinetools cask is enough to build
+from the CLI and doesn't require launching the IDE.)
 
-   (Or set `ANDROID_HOME` in your shell. Studio writes this file
-   automatically if you ever import the project there.)
+One-time SDK package install (Android platform + build tools + a CMake
+new enough to handle our `cmake_minimum_required(VERSION 3.24)` —
+AGP's bundled CMake 3.22.1 doesn't):
 
-CLI-only alternative: `brew install --cask android-commandlinetools`,
-then `sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"`.
+```sh
+yes | sdkmanager "platforms;android-35" "build-tools;35.0.0" \
+                 "platform-tools" "cmake;3.30.5"
+```
+
+Tell Gradle where everything is via `android-project/local.properties`
+(NOT committed — paths are per-machine):
+
+```properties
+sdk.dir=/opt/homebrew/share/android-commandlinetools
+ndk.dir=/opt/homebrew/share/android-ndk
+```
+
+And tell Gradle to use JDK 21 either through `JAVA_HOME` (`export
+JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home`
+in your shell) or via `org.gradle.java.home=...` in
+`android-project/gradle.properties`.
+
+> The `ndkVersion` in `app/build.gradle` is pinned to the version
+> Homebrew's `android-ndk` cask currently ships. If `brew upgrade
+> android-ndk` lands a newer revision, bump that string to match
+> `/opt/homebrew/share/android-ndk/source.properties` →
+> `Pkg.Revision`.
 
 To sideload, enable Developer Options + USB debugging on the phone,
 plug it in, accept the RSA fingerprint prompt, then run the `adb install`

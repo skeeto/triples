@@ -50,7 +50,9 @@ input::PointerEvent::Source source_for_touch(bool is_touch) {
 }  // namespace
 
 App::App() = default;
-App::~App() = default;
+App::~App() {
+    if (pointer_cursor_) SDL_DestroyCursor(pointer_cursor_);
+}
 
 bool App::initialize() {
     if (!renderer_.initialize("Triples", 480, 800)) return false;
@@ -97,6 +99,10 @@ bool App::initialize() {
         build_tally_();
     }
 
+    // System hand cursor for the restart button. NULL on platforms that
+    // don't support custom cursors; we just never SetCursor in that case.
+    pointer_cursor_ = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_POINTER);
+
     last_tick_ms_ = SDL_GetTicks();
     return true;
 }
@@ -136,7 +142,6 @@ void App::handle_event_(const SDL_Event& e) {
         }
         case SDL_EVENT_KEY_DOWN: {
             if (game_over_) {
-                if (SDL_GetTicks() < game_over_at_ms_ + kGameOverLockoutMs) return;
                 if (e.key.key == SDLK_RETURN || e.key.key == SDLK_SPACE
                     || e.key.key == SDLK_R) {
                     start_new_game_();
@@ -227,13 +232,22 @@ void App::handle_event_(const SDL_Event& e) {
 }
 
 void App::on_pointer_down_(float x, float y, input::PointerEvent::Source src) {
-    if (game_over_) {
-        // Brief lockout so a swipe that triggers game-over doesn't immediately
-        // start a new game on the same gesture's mouseup.
-        if (SDL_GetTicks() < game_over_at_ms_ + kGameOverLockoutMs) return;
-        start_new_game_();
+    // Restart button takes precedence over board input at any time — pressing
+    // it always restarts. The drag controller stays Idle (no Down dispatched),
+    // so the gesture's subsequent move/up events are silently dropped.
+    if (renderer_.restart_button_contains(x, y)) {
+        // Mobile web delivers one touch as FINGER_DOWN → FINGER_UP →
+        // synthesized MOUSE_BUTTON_DOWN → MOUSE_BUTTON_UP (not nested),
+        // so a flag would clear too early. Time-based debounce: ignore
+        // restart presses landing within kRestartDebounceMs of the last.
+        const std::uint64_t now = SDL_GetTicks();
+        if (now - last_restart_at_ms_ >= kRestartDebounceMs) {
+            last_restart_at_ms_ = now;
+            start_new_game_();
+        }
         return;
     }
+    if (game_over_) return;  // board is frozen; only the button is live now
     input::PointerEvent ev{input::PointerKind::Down, x, y, src};
     drag_.cell_size_px  = renderer_.cell_size_px();
     drag_.pixel_density = renderer_.pixel_density();
@@ -426,7 +440,18 @@ void App::apply_event_scale_(float& x, float& y) const noexcept {
     x = static_cast<float>(x * s);
     y = static_cast<float>(y * s);
 #else
-    (void)x; (void)y;
+    // SDL3 on macOS retina (and any platform with SDL_WINDOW_HIGH_PIXEL_DENSITY
+    // on a HiDPI display) delivers mouse events in *logical* pixels while the
+    // renderer's layout is in *device* pixels. Multiply by the window's
+    // pixel-density factor so the two end up in the same units — without
+    // this, point-based hit-tests (like the restart button) miss by the dpr
+    // factor, and the drag controller's `f = along / cell_size_px` ratio is
+    // off by the same factor (less obviously, since drags use deltas).
+    float s = renderer_.pixel_density();
+    if (s > 0.0f && s != 1.0f) {
+        x *= s;
+        y *= s;
+    }
 #endif
 }
 
@@ -484,7 +509,25 @@ bool App::tick() {
     mixer_.poll();
 
     if (best_score_ < state_.score) best_score_ = state_.score;
-    renderer_.draw(state_, drag_, anims_, best_score_, game_over_);
+    std::uint64_t game_over_age_ms =
+        (game_over_ && game_over_at_ms_ > 0 && now_ms >= game_over_at_ms_)
+            ? (now_ms - game_over_at_ms_) : 0;
+    renderer_.draw(state_, drag_, anims_, best_score_, game_over_, game_over_age_ms);
+
+    // Hand cursor when the mouse is over the restart button. The default
+    // cursor is restored when the mouse leaves. Touch-only platforms still
+    // have a tracked mouse position but no visible cursor, so this is a
+    // no-op there in practice.
+    if (pointer_cursor_) {
+        float mx = 0.0f, my = 0.0f;
+        SDL_GetMouseState(&mx, &my);
+        apply_event_scale_(mx, my);
+        const bool over = renderer_.restart_button_contains(mx, my);
+        if (over != cursor_over_button_) {
+            cursor_over_button_ = over;
+            SDL_SetCursor(over ? pointer_cursor_ : SDL_GetDefaultCursor());
+        }
+    }
 
     return running_;
 }

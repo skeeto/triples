@@ -12,6 +12,7 @@
 #include "render/renderer.hpp"
 
 union SDL_Event;
+struct SDL_Cursor;
 
 namespace triples {
 
@@ -52,9 +53,23 @@ private:
     bool                        game_over_ = false;
     bool                        audio_initialized_ = false;
     int                         active_touch_fingers_ = 0;
+    // Last time the restart button fired, in SDL_GetTicks() ms. Used to
+    // debounce — mobile web delivers one touch as four events in the order
+    // FINGER_DOWN, FINGER_UP, synthesized MOUSE_BUTTON_DOWN, MOUSE_BUTTON_UP,
+    // i.e. NOT nested, so a flag set-on-down/cleared-on-up doesn't suppress
+    // the second down. A 350 ms window catches the duplicate without being
+    // long enough to interfere with deliberate tap-tap restarts.
+    std::uint64_t               last_restart_at_ms_ = 0;
+    static constexpr std::uint64_t kRestartDebounceMs = 350;
+    // Cursor handling for the restart button — desktop only really uses it,
+    // but it's harmless elsewhere.
+    SDL_Cursor*                 pointer_cursor_ = nullptr;
+    bool                        cursor_over_button_ = false;
     std::uint64_t               last_tick_ms_ = 0;
+    // Timestamp the game ended, in SDL_GetTicks() ms. Used purely to drive
+    // the restart button's attention-grab animation; the input layer treats
+    // game-over taps the same as any other (you have to hit the button).
     std::uint64_t               game_over_at_ms_ = 0;
-    static constexpr std::uint64_t kGameOverLockoutMs = 1000;
 
     void try_init_audio_on_first_gesture_(const SDL_Event& e);
 

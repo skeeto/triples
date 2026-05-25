@@ -26,6 +26,13 @@ struct Layout {
     float board_w = 0.0f, board_h = 0.0f;
     float hud_top_y = 0.0f;                 // baseline area for top HUD
     float hud_bottom_y = 0.0f;
+
+    // Restart button — circular, sits in the bottom HUD strip. `restart_r` is
+    // the visible radius; `restart_hit_r` is a slightly larger radius used for
+    // pointer hit-testing so the tap target stays generous on touch screens.
+    float restart_cx = 0.0f, restart_cy = 0.0f;
+    float restart_r = 0.0f;
+    float restart_hit_r = 0.0f;
 };
 
 class Renderer {
@@ -40,16 +47,24 @@ public:
     // For HiDPI, pass the device-pixel dimensions, not the CSS-pixel ones.
     void set_logical_size(int w, int h);
 
-    // Draw a frame.
+    // Draw a frame. `game_over_age_ms` is milliseconds since the game ended;
+    // used to drive the restart button's attention-grabbing shake/pulse.
+    // Ignored when `game_over` is false.
     void draw(const game::GameState& state,
               const input::DragController& drag,
               const Animations& anims,
               std::uint64_t high_score,
-              bool game_over);
+              bool game_over,
+              std::uint64_t game_over_age_ms);
 
     // Convert a pointer (window-pixel) to a board cell index (0..15), or -1
     // if outside the board.
     int cell_for_point(float x, float y) const noexcept;
+
+    // True when the given window-pixel point falls inside the restart button's
+    // hit area. The hit area is slightly larger than the visible disc to keep
+    // the tap target comfortable on touch screens.
+    bool restart_button_contains(float x, float y) const noexcept;
 
     // Pixel size of one tile in the current layout — fed back into the drag
     // controller each frame.
@@ -75,8 +90,10 @@ private:
     TextAtlas         text_;          // Inter-Bold for HUD / labels.
     TextAtlas         text_digits_;   // Jua for tile values + tally "+N".
     TileTextureCache  tiles_;
-    SDL_Texture*      empty_slot_tex_ = nullptr;
-    int               baked_cell_w_ = 0;   // px width the cache was baked at
+    SDL_Texture*      empty_slot_tex_     = nullptr;
+    SDL_Texture*      restart_button_tex_ = nullptr;
+    int               baked_cell_w_       = 0;   // px width the tile cache was baked at
+    int               baked_restart_size_ = 0;   // px diameter the button tex was baked at
 
     void recompute_layout_();
     void ensure_cache_();
@@ -87,7 +104,8 @@ private:
     void draw_one_tile_(std::uint8_t rank, float center_x, float center_y,
                         float scale_x, float scale_y, std::uint8_t alpha,
                         std::uint8_t current_max);
-    void draw_hud_(const game::GameState& state, std::uint64_t high_score, bool game_over);
+    void draw_hud_(const game::GameState& state, std::uint64_t high_score,
+                   bool game_over, std::uint64_t game_over_age_ms);
     void draw_tally_(const Animations& anims);
 };
 

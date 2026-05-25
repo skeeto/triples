@@ -64,9 +64,10 @@ std::size_t tile_label(std::uint8_t rank, char* buf, std::size_t buflen) {
 
 Renderer::Renderer() = default;
 Renderer::~Renderer() {
-    if (empty_slot_tex_) SDL_DestroyTexture(empty_slot_tex_);
-    if (sdl_renderer_)   SDL_DestroyRenderer(sdl_renderer_);
-    if (window_)         SDL_DestroyWindow(window_);
+    if (restart_button_tex_) SDL_DestroyTexture(restart_button_tex_);
+    if (empty_slot_tex_)     SDL_DestroyTexture(empty_slot_tex_);
+    if (sdl_renderer_)       SDL_DestroyRenderer(sdl_renderer_);
+    if (window_)             SDL_DestroyWindow(window_);
 }
 
 bool Renderer::initialize(const char* title, int initial_w, int initial_h) {
@@ -145,6 +146,34 @@ void Renderer::recompute_layout_() {
     layout_.board_y = std::floor(hud_top + (avail_h - layout_.board_h) * 0.5f + margin);
     layout_.hud_top_y    = hud_top * 0.5f;
     layout_.hud_bottom_y = layout_.win_h - hud_bot * 0.5f;
+
+    // Restart button: parked right under the board so it reads as part of
+    // the board UI, not a footer. Sized by two competing constraints —
+    // proportional to a board cell (so it feels in the same rhythm as the
+    // tiles), AND small enough to fit between the board's bottom edge and
+    // the window's bottom edge without overlap. The space-below-board cap
+    // is critical: at aspect ratios where the board nearly fills avail_h
+    // (e.g. landscape tablets), a large button would otherwise sit on top
+    // of the bottom row of tiles.
+    layout_.restart_cx = layout_.win_w * 0.5f;
+    const float space_below_board =
+        layout_.win_h - (layout_.board_y + layout_.board_h);
+    constexpr float kBottomMargin = 4.0f;
+    const float usable = std::max(0.0f, space_below_board - kBottomMargin);
+    // Given gap(r) = max(8, 0.16*r) and the constraint gap(r) + 2*r <= usable,
+    // solve for the largest r in each gap regime and pick the feasible one.
+    float r_max_min_gap = (usable - 8.0f) * 0.5f;
+    float r_max = (r_max_min_gap > 50.0f) ? (usable / 2.16f) : r_max_min_gap;
+    if (r_max < 0.0f) r_max = 0.0f;
+    const float r_from_cell = layout_.cell_w * 0.42f;
+    layout_.restart_r = std::clamp(std::min(r_from_cell, r_max), 16.0f, 100.0f);
+    const float gap_to_board = std::max(8.0f, layout_.restart_r * 0.16f);
+    layout_.restart_cy = (layout_.board_y + layout_.board_h)
+                        + gap_to_board + layout_.restart_r;
+    // Hit radius: 20% larger than the visible disc for finger-friendliness,
+    // but never extends back into the board's bottom row.
+    layout_.restart_hit_r = std::min(layout_.restart_r * 1.20f,
+                                      layout_.restart_r + gap_to_board - 2.0f);
 }
 
 void Renderer::ensure_cache_() {
@@ -152,11 +181,27 @@ void Renderer::ensure_cache_() {
     // texture maps 1:1 to its destination rect.
     int desired = static_cast<int>(layout_.tile_w);
     if (desired <= 8) desired = 8;
-    if (desired == baked_cell_w_) return;
-    tiles_.bake(sdl_renderer_, desired);
-    if (empty_slot_tex_) SDL_DestroyTexture(empty_slot_tex_);
-    empty_slot_tex_ = bake_empty_slot_texture(sdl_renderer_, desired, static_cast<int>(desired * 1.5f));
-    baked_cell_w_ = desired;
+    if (desired != baked_cell_w_) {
+        tiles_.bake(sdl_renderer_, desired);
+        if (empty_slot_tex_) SDL_DestroyTexture(empty_slot_tex_);
+        empty_slot_tex_ = bake_empty_slot_texture(sdl_renderer_, desired, static_cast<int>(desired * 1.5f));
+        baked_cell_w_ = desired;
+    }
+
+    // Restart button texture, baked oversize so the on-screen pulse animation
+    // can scale it slightly larger without going past 1:1.
+    int desired_restart = std::max(48, static_cast<int>(layout_.restart_r * 2.0f * 2.0f));
+    if (desired_restart != baked_restart_size_) {
+        if (restart_button_tex_) SDL_DestroyTexture(restart_button_tex_);
+        restart_button_tex_ = bake_restart_button_texture(sdl_renderer_, desired_restart);
+        baked_restart_size_ = desired_restart;
+    }
+}
+
+bool Renderer::restart_button_contains(float x, float y) const noexcept {
+    float dx = x - layout_.restart_cx;
+    float dy = y - layout_.restart_cy;
+    return dx * dx + dy * dy <= layout_.restart_hit_r * layout_.restart_hit_r;
 }
 
 float Renderer::cell_size_px() const noexcept {
@@ -440,7 +485,8 @@ void Renderer::draw_tally_(const Animations& anims) {
     }
 }
 
-void Renderer::draw_hud_(const game::GameState& state, std::uint64_t high_score, bool game_over) {
+void Renderer::draw_hud_(const game::GameState& state, std::uint64_t high_score,
+                          bool game_over, std::uint64_t game_over_age_ms) {
     // Top HUD spans y=[0 .. board_y]. Lay out: a small label row at the top,
     // then preview card / score number / best number row.
     const float hud_top_h = layout_.board_y;
@@ -502,12 +548,31 @@ void Renderer::draw_hud_(const game::GameState& state, std::uint64_t high_score,
                         right_anchor, row_top + (preview_h + body_h) * 0.5f,
                         0x2A, 0x2A, 0x2A);
 
-    // Bottom: game-over message.
-    if (game_over) {
-        text_.draw_centered(sdl_renderer_, "GAME OVER  —  TAP TO RESTART",
-                            TextAtlas::Size::Body,
-                            layout_.win_w * 0.5f, layout_.hud_bottom_y,
-                            0xD9, 0x2E, 0x2E);
+    // Bottom: restart button. Always visible (single tap reseeds the game at
+    // any time), but it shakes + pulses on game-over so the player's eye is
+    // drawn to it now that the board has nothing else to react to.
+    if (restart_button_tex_) {
+        float anim_dx = 0.0f;
+        float anim_scale = 1.0f;
+        if (game_over) {
+            float age_s = static_cast<float>(game_over_age_ms) * 0.001f;
+            // Initial wiggle: ±4 px at ~14 Hz, decaying over the first ~1.5 s.
+            float shake_amp = std::max(0.0f, 4.0f - age_s * 2.7f);
+            anim_dx = shake_amp *
+                      std::sin(age_s * 14.0f * 2.0f * 3.14159265f);
+            // Gentle continuous pulse so the button keeps "breathing" after
+            // the initial shake settles.
+            anim_scale = 1.0f + 0.08f * std::sin(age_s * 4.5f);
+        }
+        const float r = layout_.restart_r * anim_scale;
+        SDL_FRect dst{
+            layout_.restart_cx + anim_dx - r,
+            layout_.restart_cy - r,
+            r * 2.0f,
+            r * 2.0f,
+        };
+        SDL_SetTextureAlphaMod(restart_button_tex_, 255);
+        SDL_RenderTexture(sdl_renderer_, restart_button_tex_, nullptr, &dst);
     }
 }
 
@@ -515,7 +580,8 @@ void Renderer::draw(const game::GameState& state,
                     const input::DragController& drag,
                     const Animations& anims,
                     std::uint64_t high_score,
-                    bool game_over) {
+                    bool game_over,
+                    std::uint64_t game_over_age_ms) {
     if (!sdl_renderer_) return;
     float shake_x, shake_y;
     anims.shake_offset(shake_x, shake_y);
@@ -539,7 +605,7 @@ void Renderer::draw(const game::GameState& state,
     layout_.board_x -= shake_x;
     layout_.board_y -= shake_y;
 
-    draw_hud_(state, high_score, game_over);
+    draw_hud_(state, high_score, game_over, game_over_age_ms);
 
     SDL_RenderPresent(sdl_renderer_);
 }

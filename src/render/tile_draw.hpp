@@ -42,4 +42,9 @@ private:
 // dimensions as a tile. Drawn once into a single texture, reused.
 SDL_Texture* bake_empty_slot_texture(SDL_Renderer* r, int w, int h);
 
+// Restart button texture — a filled blue circle with a white refresh-style
+// arrow (a 3/4-circle arc with a tangent arrowhead) baked on top. Sized
+// `diameter_px` × `diameter_px`; render scaled to the on-screen button size.
+SDL_Texture* bake_restart_button_texture(SDL_Renderer* r, int diameter_px);
+
 }  // namespace triples::render

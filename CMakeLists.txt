@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(triples CXX C)
+project(triples VERSION 1.0 LANGUAGES CXX C)
 
 if(APPLE)
     enable_language(OBJCXX)
@@ -65,7 +65,12 @@ set(APP_SOURCES
     src/app.cpp
 )
 
-add_executable(triples
+# WIN32: link the GUI ("windows") subsystem so launching the .exe doesn't
+# open a console window — SDL3 supplies the WinMain entry point.
+# MACOSX_BUNDLE: produce Triples.app so Dock / Cmd-Tab show the bundled icon
+# and metadata rather than a generic terminal binary.
+# Both flags are silently ignored on platforms that don't apply.
+add_executable(triples WIN32 MACOSX_BUNDLE
     ${APP_SOURCES} ${GAME_SOURCES} ${RENDER_SOURCES} ${INPUT_SOURCES} ${AUDIO_SOURCES}
     ${EMBEDDED_RESOURCE_SOURCES}
 )
@@ -88,6 +93,13 @@ if(EMSCRIPTEN)
         SUFFIX ".html"
         OUTPUT_NAME "index"
     )
+    # Copy the favicon next to index.html so the page's <link rel="icon">
+    # resolves to a sibling file. Configure-time copy: regenerated only when
+    # CMake reruns, which is fine since the PNG is a committed artifact.
+    configure_file(
+        ${CMAKE_SOURCE_DIR}/shell/triples-favicon.png
+        ${CMAKE_CURRENT_BINARY_DIR}/triples-favicon.png
+        COPYONLY)
 elseif(APPLE)
     target_sources(triples PRIVATE
         src/platform/persistence_posix.cpp
@@ -99,9 +111,33 @@ elseif(APPLE)
         "-framework AppKit"
         "-framework CoreFoundation"
     )
+    # Bundle: drop src/triples.icns into Triples.app/Contents/Resources/ and
+    # populate Info.plist via MACOSX_BUNDLE_* properties. CMake auto-builds
+    # the Info.plist from these.
+    set(_triples_icns "${CMAKE_CURRENT_SOURCE_DIR}/src/triples.icns")
+    target_sources(triples PRIVATE "${_triples_icns}")
+    set_source_files_properties("${_triples_icns}" PROPERTIES
+        MACOSX_PACKAGE_LOCATION "Resources")
+    set_target_properties(triples PROPERTIES
+        MACOSX_BUNDLE_BUNDLE_NAME           "Triples"
+        MACOSX_BUNDLE_BUNDLE_VERSION        "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING  "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_GUI_IDENTIFIER        "com.nullprogram.triples"
+        MACOSX_BUNDLE_ICON_FILE             "triples.icns")
 elseif(WIN32)
     target_sources(triples PRIVATE src/platform/persistence_win.cpp)
     target_link_libraries(triples PRIVATE shell32)
+    # Compile src/triples.ico into the .exe via a generated .rc file
+    # (resource script). The .rc is configure_file'd from the .rc.in template
+    # so @PROJECT_VERSION@ substitutes cleanly without windres -D quoting.
+    # windres needs the .ico on its include path; the .rc references it by
+    # bare filename.
+    enable_language(RC)
+    configure_file(${CMAKE_CURRENT_SOURCE_DIR}/src/triples.rc.in
+                   ${CMAKE_CURRENT_BINARY_DIR}/triples.rc @ONLY)
+    configure_file(${CMAKE_CURRENT_SOURCE_DIR}/src/triples.ico
+                   ${CMAKE_CURRENT_BINARY_DIR}/triples.ico COPYONLY)
+    target_sources(triples PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/triples.rc)
 else()
     target_sources(triples PRIVATE src/platform/persistence_posix.cpp)
 endif()

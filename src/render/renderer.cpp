@@ -10,6 +10,7 @@
 
 #include "render/effects.hpp"
 #include "resources/embedded.hpp"
+#include "resources/icon.hpp"
 
 namespace triples::render {
 
@@ -94,6 +95,23 @@ bool Renderer::initialize(const char* title, int initial_w, int initial_h) {
         std::fprintf(stderr, "SDL_CreateWindow: %s\n", SDL_GetError());
         return false;
     }
+    // Window / taskbar icon. SDL copies the pixels into the window, so the
+    // source surface is only needed transiently. Skipped on macOS because
+    // SDL_SetWindowIcon there hands the image to `[NSApp setApplicationIcon
+    // Image:]`, which would overwrite the bundle's multi-resolution
+    // triples.icns with this single 64×64 RGBA — visibly blurry in the Dock
+    // and Cmd-Tab switcher. Letting the bundle icon (CFBundleIconFile)
+    // win there gives the OS the full size range to pick from. A harmless
+    // no-op on the web build, which has no OS window chrome.
+#ifndef __APPLE__
+    if (SDL_Surface* icon = SDL_CreateSurfaceFrom(
+            resources::ICON_W, resources::ICON_H, SDL_PIXELFORMAT_RGBA32,
+            const_cast<std::uint8_t*>(resources::ICON_RGBA),
+            resources::ICON_W * 4)) {
+        SDL_SetWindowIcon(window_, icon);
+        SDL_DestroySurface(icon);
+    }
+#endif
     sdl_renderer_ = SDL_CreateRenderer(window_, nullptr);
     if (!sdl_renderer_) {
         std::fprintf(stderr, "SDL_CreateRenderer: %s\n", SDL_GetError());

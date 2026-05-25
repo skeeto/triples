@@ -598,13 +598,21 @@ void Renderer::draw_hud_(const game::GameState& state, std::uint64_t high_score,
 
     // Best (right). Same scaling treatment, sized against its own column —
     // about as wide as the NEXT preview, plus a hair, so the three HUD
-    // columns stay balanced.
+    // columns stay balanced. The width cap is ALSO bounded by the room
+    // between right_anchor and the window's right edge: that anchor sits
+    // close to the edge on narrow windows (`right_anchor` is one half a
+    // preview shy of `win_w - board_x`), and without this clamp a wide
+    // best score's right half extent runs into the margin.
     format_int(high_score, buf, sizeof(buf), n);
     std::string_view best_str(buf, n);
     {
         const TextAtlas::Size sz = TextAtlas::Size::Body;
         float scale = (row_height * 0.55f) / text_.line_height(sz);
-        const float best_max_w = std::max(20.0f, preview_w * 2.0f);
+        constexpr float kRightPad = 12.0f;
+        const float right_room =
+            std::max(0.0f, layout_.win_w - kRightPad - right_anchor);
+        const float best_max_w = std::max(20.0f,
+            std::min(preview_w * 2.0f, 2.0f * right_room));
         float meas = text_.measure_width(best_str, sz, scale);
         if (meas > best_max_w) scale *= best_max_w / meas;
         const float h_now = text_.line_height(sz, scale);

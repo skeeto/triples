@@ -153,13 +153,34 @@ void Renderer::recompute_layout_() {
     layout_.win_w = static_cast<float>(logical_w_);
     layout_.win_h = static_cast<float>(logical_h_);
 
-    // Reserve top and bottom HUD bands.
-    const float hud_top = std::min(120.0f, layout_.win_h * 0.16f);
-    const float hud_bot = std::min(80.0f,  layout_.win_h * 0.10f);
-    const float margin  = std::min(layout_.win_w, layout_.win_h) * 0.04f;
+    // Ask SDL for the OS-reported safe rect (iOS status bar / notch /
+    // home-indicator inset, Android nav bar, …). SDL3 returns it in window
+    // (logical) coords; we work in device pixels, so multiply by
+    // pixel_density. Desktop platforms typically return the full window
+    // and the insets are 0.
+    layout_.safe_top = 0.0f;
+    layout_.safe_bot = 0.0f;
+    if (window_) {
+        SDL_Rect safe{};
+        if (SDL_GetWindowSafeArea(window_, &safe)) {
+            int win_w_logical = 0, win_h_logical = 0;
+            SDL_GetWindowSize(window_, &win_w_logical, &win_h_logical);
+            const float dpr = pixel_density();
+            layout_.safe_top = std::max(0.0f, safe.y * dpr);
+            layout_.safe_bot = std::max(0.0f,
+                (win_h_logical - safe.y - safe.h) * dpr);
+        }
+    }
+    const float usable_h = std::max(0.0f,
+        layout_.win_h - layout_.safe_top - layout_.safe_bot);
+
+    // Reserve top and bottom HUD bands inside the safe area.
+    const float hud_top = std::min(120.0f, usable_h * 0.16f);
+    const float hud_bot = std::min(80.0f,  usable_h * 0.10f);
+    const float margin  = std::min(layout_.win_w, usable_h) * 0.04f;
 
     float avail_w = layout_.win_w - margin * 2.0f;
-    float avail_h = layout_.win_h - hud_top - hud_bot - margin * 2.0f;
+    float avail_h = usable_h - hud_top - hud_bot - margin * 2.0f;
     float cell_w = std::min(avail_w / 4.0f, (avail_h / 4.0f) / 1.5f);
     cell_w = std::floor(cell_w);
     float cell_h = cell_w * 1.5f;
@@ -174,9 +195,13 @@ void Renderer::recompute_layout_() {
     layout_.board_w = cell_w * 4.0f;
     layout_.board_h = cell_h * 4.0f;
     layout_.board_x = std::floor((layout_.win_w - layout_.board_w) * 0.5f);
-    layout_.board_y = std::floor(hud_top + (avail_h - layout_.board_h) * 0.5f + margin);
-    layout_.hud_top_y    = hud_top * 0.5f;
-    layout_.hud_bottom_y = layout_.win_h - hud_bot * 0.5f;
+    // board_y is offset by safe_top so the top HUD strip lives *below* any
+    // status bar / notch.
+    layout_.board_y = std::floor(layout_.safe_top + hud_top
+                                 + (avail_h - layout_.board_h) * 0.5f
+                                 + margin);
+    layout_.hud_top_y    = layout_.safe_top + hud_top * 0.5f;
+    layout_.hud_bottom_y = layout_.win_h - layout_.safe_bot - hud_bot * 0.5f;
 
     // Restart button: parked right under the board so it reads as part of
     // the board UI, not a footer. Sized by two competing constraints —
@@ -187,8 +212,11 @@ void Renderer::recompute_layout_() {
     // (e.g. landscape tablets), a large button would otherwise sit on top
     // of the bottom row of tiles.
     layout_.restart_cx = layout_.win_w * 0.5f;
+    // Space below the board is bounded by the BOTTOM safe area edge, not
+    // the window edge, so the button doesn't end up under the home indicator.
     const float space_below_board =
-        layout_.win_h - (layout_.board_y + layout_.board_h);
+        (layout_.win_h - layout_.safe_bot)
+        - (layout_.board_y + layout_.board_h);
     constexpr float kBottomMargin = 4.0f;
     const float usable = std::max(0.0f, space_below_board - kBottomMargin);
     // Given gap(r) = max(8, 0.16*r) and the constraint gap(r) + 2*r <= usable,
@@ -563,15 +591,19 @@ void Renderer::draw_tally_(const Animations& anims) {
 
 void Renderer::draw_hud_(const game::GameState& state, std::uint64_t high_score,
                           bool game_over, std::uint64_t game_over_age_ms) {
-    // Top HUD spans y=[0 .. board_y]. Lay out: a small label row at the top,
-    // then preview card / score number / best number row.
-    const float hud_top_h = layout_.board_y;
-    const float label_baseline = std::max(20.0f, hud_top_h * 0.18f);
+    // Top HUD spans y=[safe_top .. board_y] — i.e. the band between any OS
+    // safe-area inset at the top of the window (status bar / notch / camera
+    // cutout) and the top edge of the board. Lay out: a small label row at
+    // the top, then preview card / score number / best number row.
+    const float hud_top_h      = layout_.board_y - layout_.safe_top;
+    const float label_baseline = layout_.safe_top
+                               + std::max(20.0f, hud_top_h * 0.18f);
     const float small_h = text_.line_height(TextAtlas::Size::Small);
 
-    // Preview card sized to the available HUD height.
+    // Preview card sized to the available HUD height (from label baseline
+    // down to the top of the board).
     const float row_top    = label_baseline + small_h * 0.4f;
-    const float row_height = hud_top_h - row_top - 4.0f;
+    const float row_height = (layout_.board_y - row_top) - 4.0f;
     const float preview_h  = std::max(24.0f, std::min(row_height, layout_.cell_h * 0.55f));
     const float preview_w  = preview_h / 1.5f;
 

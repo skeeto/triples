@@ -33,6 +33,12 @@ struct Layout {
     float restart_cx = 0.0f, restart_cy = 0.0f;
     float restart_r = 0.0f;
     float restart_hit_r = 0.0f;
+
+    // OS-reported safe-area insets in device pixels (iOS status bar / notch,
+    // iPhone home indicator, Android nav bar, …). Zero on platforms without
+    // insets, or when SDL_GetWindowSafeArea reports the full window.
+    float safe_top = 0.0f;
+    float safe_bot = 0.0f;
 };
 
 class Renderer {

@@ -206,6 +206,82 @@ std::vector<RGBA> rasterizeAt(int n) {
     return downscale(renderTile(2 * n), 2 * n, n);
 }
 
+// iOS-flavoured variant of the icon: SQUARE, full-bleed, no rounded corners.
+// iOS applies its own squircle mask to home-screen icons, so a source PNG
+// that already has rounded corners (like renderTile's output) ends up
+// double-rounded with visible transparent gaps where neither mask reaches.
+// The design here is the same face/edge/slashes layout, but the white face
+// reaches all four edges and the bottom band runs corner-to-corner.
+std::vector<RGBA> renderTileIOS(int S) {
+    std::vector<RGBA> img(size_t(S) * S);
+
+    const float band_top_y = S * (1.0f - 0.18f);
+    const RGBA face_color  {0xFC, 0xFC, 0xFC, 0xFF};
+    const RGBA edge_color  {0xFF, 0xCC, 0x66, 0xFF};
+    const RGBA slash_color {0xD9, 0x2E, 0x2E, 0xFF};
+
+    // Icon center sits a touch above the geometric center so it visually
+    // rests on the face (white) rather than crossing the band.
+    const float icx        = S * 0.5f;
+    const float icy        = S * 0.42f;
+    const float ring_r_out = S * 0.28f;
+    const float ring_r_in  = S * 0.18f;
+    const float ring_r_mid = 0.5f * (ring_r_in + ring_r_out);
+    const float thickness  = ring_r_out - ring_r_in;
+
+    // Three slashes — same construction as renderTile(), positioned around
+    // the iOS icon center.
+    struct Slash { float ax, ay, bx, by; };
+    Slash slashes[3];
+    {
+        const float angle    = -62.0f * 3.14159265f / 180.0f;
+        const float cosA     = std::cos(angle);
+        const float sinA     = std::sin(angle);
+        const float length   = S * 0.50f;
+        const float spacing  = S * 0.18f;
+        const float halfLen  = length * 0.5f;
+        for (int i = 0; i < 3; ++i) {
+            float off = (i - 1) * spacing;
+            float scx = icx + off;
+            float scy = icy + S * 0.04f;
+            slashes[i].ax = scx - halfLen * cosA;
+            slashes[i].ay = scy - halfLen * sinA;
+            slashes[i].bx = scx + halfLen * cosA;
+            slashes[i].by = scy + halfLen * sinA;
+        }
+    }
+    const float slash_half_thick = S * 0.055f;
+    const float aa = std::max(0.9f, S * 0.012f);
+
+    for (int y = 0; y < S; ++y) {
+        for (int x = 0; x < S; ++x) {
+            float px = x + 0.5f;
+            float py = y + 0.5f;
+            // Base: face on top, edge band at the bottom. Opaque everywhere
+            // — iOS does the rounding.
+            RGBA pixel = (py < band_top_y) ? face_color : edge_color;
+
+            // Slashes composite on top with AA at the capsule boundary.
+            for (const auto& s : slashes) {
+                float d = sdSegment(px, py, s.ax, s.ay, s.bx, s.by)
+                        - slash_half_thick;
+                if (d > aa * 0.5f) continue;
+                float cov = std::clamp(0.5f - d / aa, 0.0f, 1.0f);
+                if (cov <= 0.0f) continue;
+                RGBA s_pixel = slash_color;
+                s_pixel.a = uint8_t(cov * 255.0f + 0.5f);
+                pixel = over(pixel, s_pixel);
+            }
+            img[size_t(y) * S + x] = pixel;
+        }
+    }
+    return img;
+}
+
+std::vector<RGBA> rasterizeIOSAt(int n) {
+    return downscale(renderTileIOS(2 * n), 2 * n, n);
+}
+
 // --- little-endian byte writers --------------------------------------------
 void put16(std::vector<uint8_t>& v, uint16_t x) {
     v.push_back(uint8_t(x));
@@ -376,12 +452,27 @@ int main() {
         {"ic11",  32}, {"ic12",  64}, {"ic13", 256}, {"ic14", 512},
     });
 
-    // --- Web favicon (PNG, base64'd into shell/index.html by hand) ---
+    // --- Web favicon (PNG, served alongside index.html) ---
     {
         auto fav = rasterizeAt(192);
         stbi_write_png("shell/triples-favicon.png", 192, 192, 4,
                        fav.data(), 192 * 4);
         std::printf("shell/triples-favicon.png  (192x192 RGBA)\n");
+    }
+
+    // --- iOS app icons (full-bleed PNGs at the home-screen sizes) ---
+    // CFBundleIcons in Info-iOS.plist references "AppIcon60x60" / "AppIcon76x76";
+    // iOS picks the @2x/@3x suffix based on the device's render scale.
+    struct IOSIcon { const char* path; int size; };
+    const IOSIcon ios_icons[] = {
+        {"src/AppIcon60x60@2x.png", 120},   // iPhone 60pt × 2
+        {"src/AppIcon60x60@3x.png", 180},   // iPhone 60pt × 3
+        {"src/AppIcon76x76@2x.png", 152},   // iPad   76pt × 2
+    };
+    for (const auto& ic : ios_icons) {
+        auto px = rasterizeIOSAt(ic.size);
+        stbi_write_png(ic.path, ic.size, ic.size, 4, px.data(), ic.size * 4);
+        std::printf("%s  (%dx%d RGBA)\n", ic.path, ic.size, ic.size);
     }
 
     return 0;

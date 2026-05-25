@@ -121,6 +121,15 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")
     # Info.plist template carries. Use a fully custom plist instead.
     configure_file(${CMAKE_SOURCE_DIR}/src/Info-iOS.plist.in
                    ${CMAKE_CURRENT_BINARY_DIR}/Info-iOS.plist @ONLY)
+    # Home-screen icons — bundled at the .app root (NOT under Resources/);
+    # CFBundleIcons in Info-iOS.plist references the stems directly.
+    set(_triples_ios_icons
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/AppIcon60x60@2x.png
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/AppIcon60x60@3x.png
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/AppIcon76x76@2x.png)
+    target_sources(triples PRIVATE ${_triples_ios_icons})
+    set_source_files_properties(${_triples_ios_icons} PROPERTIES
+        MACOSX_PACKAGE_LOCATION "")
     set_target_properties(triples PROPERTIES
         MACOSX_BUNDLE_INFO_PLIST            ${CMAKE_CURRENT_BINARY_DIR}/Info-iOS.plist
         MACOSX_BUNDLE_BUNDLE_NAME           "Triples"

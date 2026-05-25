@@ -50,7 +50,34 @@
     <dict/>
     <key>UIRequiresFullScreen</key>
     <true/>
-    <key>UIStatusBarHidden</key>
-    <true/>
+    <!--
+      iPhone + iPad home-screen icons. CFBundleIconFiles names the PNG
+      stems; iOS appends the @2x / @3x suffix and chooses based on the
+      device's render scale (so AppIcon60x60 finds AppIcon60x60@2x.png on
+      a 2× device and AppIcon60x60@3x.png on a 3× one). The PNG payloads
+      are emitted by tools/genicon.cpp's renderTileIOS() — full-bleed,
+      no rounded corners, since iOS applies its own squircle mask.
+    -->
+    <key>CFBundleIcons</key>
+    <dict>
+        <key>CFBundlePrimaryIcon</key>
+        <dict>
+            <key>CFBundleIconFiles</key>
+            <array>
+                <string>AppIcon60x60</string>
+            </array>
+        </dict>
+    </dict>
+    <key>CFBundleIcons~ipad</key>
+    <dict>
+        <key>CFBundlePrimaryIcon</key>
+        <dict>
+            <key>CFBundleIconFiles</key>
+            <array>
+                <string>AppIcon60x60</string>
+                <string>AppIcon76x76</string>
+            </array>
+        </dict>
+    </dict>
 </dict>
 </plist>

@@ -467,10 +467,13 @@ void Renderer::draw_tally_(const Animations& anims) {
         baseline -= (1.0f - fade_in) * 6.0f;
 
         std::uint8_t a = static_cast<std::uint8_t>(fade_in * 255.0f);
-        // Outline width scales with the font so the stroke stays proportional.
-        // LINEAR-sampled glyph edges have ~1–2 px of soft falloff, so we need
-        // at least 4 px of shift before the solid inner ring is visible.
-        const float o = std::max(4.0f, scale * 6.0f);
+        // Outline width scales with the font so the stroke stays proportional
+        // to the glyph at every resolution. The 1.5 px floor keeps the halo
+        // visible at very small scales (LINEAR-sampled edges have a fraction
+        // of a dest-pixel of falloff when the source is heavily downsampled,
+        // so even 1 px of shift produces a solid ring there); a higher floor
+        // would balloon to ~20% of the glyph height on low-DPI windows.
+        const float o = std::max(scale * 6.0f, 1.5f);
         const float d = o * 0.7071f;  // diagonals at same distance as cardinals
         const float offs[8][2] = {{-o, 0}, {o, 0}, {0, -o}, {0, o},
                                   {-d, -d}, {d, -d}, {-d, d}, {d, d}};
@@ -492,8 +495,6 @@ void Renderer::draw_hud_(const game::GameState& state, std::uint64_t high_score,
     const float hud_top_h = layout_.board_y;
     const float label_baseline = std::max(20.0f, hud_top_h * 0.18f);
     const float small_h = text_.line_height(TextAtlas::Size::Small);
-    const float body_h  = text_.line_height(TextAtlas::Size::Body);
-    const float large_h = text_.line_height(TextAtlas::Size::Large);
 
     // Preview card sized to the available HUD height.
     const float row_top    = label_baseline + small_h * 0.4f;
@@ -526,27 +527,61 @@ void Renderer::draw_hud_(const game::GameState& state, std::uint64_t high_score,
             SDL_RenderTexture(sdl_renderer_, t, nullptr, &dst);
         }
         if (state.next.is_bonus) {
-            // Center the "+" in the body region (upper ~88% of the preview).
-            float bh = text_.line_height(TextAtlas::Size::Large);
+            // "+" sized to fit inside the preview tile body (upper ~88%).
+            const TextAtlas::Size bsz = TextAtlas::Size::Large;
+            float bscale = (preview_h * 0.55f) / text_.line_height(bsz);
+            float bw = text_.measure_width("+", bsz, bscale);
+            const float bmax_w = preview_w * 0.60f;
+            if (bw > bmax_w) bscale *= bmax_w / bw;
+            float bh = text_.line_height(bsz, bscale);
             float baseline = row_top + preview_h * 0.44f + bh * 0.32f;
-            text_.draw_centered(sdl_renderer_, "+", TextAtlas::Size::Large,
-                                left_anchor, baseline, 0x2A, 0x2A, 0x2A);
+            text_.draw_centered(sdl_renderer_, "+", bsz,
+                                left_anchor, baseline, 0x2A, 0x2A, 0x2A, 255, bscale);
         }
     }
 
-    // Score (centered, large).
+    // Score (centered). Sized to fit between the NEXT preview's right edge
+    // and the BEST column on the right, with a small horizontal margin. The
+    // baked Large size is ~96 px tall — without this scaling, a wide score
+    // like "27639" paints right through the BEST column on low-resolution
+    // windows. The 0.70 height target leaves enough horizontal slack on
+    // narrow windows for 6-7 digit scores to fit at the same scale (a
+    // maxed-out game reaches ~600k); on wide windows the width clamp below
+    // dominates anyway, so this knob only shrinks the narrow case.
     char buf[24];
     std::size_t n;
     format_int(state.score, buf, sizeof(buf), n);
-    text_.draw_centered(sdl_renderer_, std::string_view(buf, n), TextAtlas::Size::Large,
-                        center_anchor, row_top + (preview_h + large_h) * 0.5f,
-                        0x2A, 0x2A, 0x2A);
+    std::string_view score_str(buf, n);
+    {
+        const TextAtlas::Size sz = TextAtlas::Size::Large;
+        float scale = (row_height * 0.70f) / text_.line_height(sz);
+        const float score_half = std::max(20.0f,
+            center_anchor - left_anchor - preview_w * 0.5f - 8.0f);
+        const float score_max_w = 2.0f * score_half;
+        float meas = text_.measure_width(score_str, sz, scale);
+        if (meas > score_max_w) scale *= score_max_w / meas;
+        const float h_now = text_.line_height(sz, scale);
+        text_.draw_centered(sdl_renderer_, score_str, sz,
+                            center_anchor, row_top + (preview_h + h_now) * 0.5f,
+                            0x2A, 0x2A, 0x2A, 255, scale);
+    }
 
-    // Best (right, body).
+    // Best (right). Same scaling treatment, sized against its own column —
+    // about as wide as the NEXT preview, plus a hair, so the three HUD
+    // columns stay balanced.
     format_int(high_score, buf, sizeof(buf), n);
-    text_.draw_centered(sdl_renderer_, std::string_view(buf, n), TextAtlas::Size::Body,
-                        right_anchor, row_top + (preview_h + body_h) * 0.5f,
-                        0x2A, 0x2A, 0x2A);
+    std::string_view best_str(buf, n);
+    {
+        const TextAtlas::Size sz = TextAtlas::Size::Body;
+        float scale = (row_height * 0.55f) / text_.line_height(sz);
+        const float best_max_w = std::max(20.0f, preview_w * 2.0f);
+        float meas = text_.measure_width(best_str, sz, scale);
+        if (meas > best_max_w) scale *= best_max_w / meas;
+        const float h_now = text_.line_height(sz, scale);
+        text_.draw_centered(sdl_renderer_, best_str, sz,
+                            right_anchor, row_top + (preview_h + h_now) * 0.5f,
+                            0x2A, 0x2A, 0x2A, 255, scale);
+    }
 
     // Bottom: restart button. Always visible (single tap reseeds the game at
     // any time), but it shakes + pulses on game-over so the player's eye is

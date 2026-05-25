@@ -75,7 +75,20 @@ bool Renderer::initialize(const char* title, int initial_w, int initial_h) {
         std::fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
         return false;
     }
-    window_ = SDL_CreateWindow(title, initial_w, initial_h,
+    // Windows sizes SDL3 windows in screen pixels and is always per-monitor
+    // DPI-aware, so the unscaled 480×800 initial size is physically tiny on a
+    // 4K display at 150–200% UI scaling. Pre-multiply by the display's
+    // content scale on Windows. macOS sizes in points (OS handles scaling);
+    // Emscripten is auto-sized to the canvas via sync_canvas_size_().
+    int w_req = initial_w, h_req = initial_h;
+#ifdef _WIN32
+    float content_scale = SDL_GetDisplayContentScale(SDL_GetPrimaryDisplay());
+    if (content_scale > 1.0f) {
+        w_req = static_cast<int>(w_req * content_scale + 0.5f);
+        h_req = static_cast<int>(h_req * content_scale + 0.5f);
+    }
+#endif
+    window_ = SDL_CreateWindow(title, w_req, h_req,
                                SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
     if (!window_) {
         std::fprintf(stderr, "SDL_CreateWindow: %s\n", SDL_GetError());

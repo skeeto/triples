@@ -53,20 +53,46 @@
     canvas.addEventListener('touchend',    e => e.preventDefault(), {passive: false});
     canvas.addEventListener('gesturestart', e => e.preventDefault());
 
-    // Browser autoplay policy keeps SDL3's AudioContext "suspended" until a
-    // user gesture lets us resume it. SDL3 stashes the context at
-    // Module.SDL3.audioContext — nudge it on every gesture (cheap, idempotent).
+    // Browser autoplay policy keeps SDL3's AudioContext suspended until a
+    // user gesture lets us resume it from a real event-handler frame. SDL3
+    // stashes the context at Module.SDL3.audioContext.
+    //
+    // Strategy: on every gesture, resume() the context AND play a 1-sample
+    // silent buffer through the destination. The silent-buffer trick is the
+    // historic iOS Safari unlock, but Firefox and Chrome are happy with it
+    // too — at worst it's a no-op. Listeners are non-passive in capture phase
+    // and attached to both window and document so they fire before any
+    // canvas-level SDL3 handler that might stopPropagation().
+    var _audioPrimed = false;
     function unlockAudio() {
       try {
         var ctx = window.Module && window.Module.SDL3 && window.Module.SDL3.audioContext;
-        if (ctx && typeof ctx.resume === 'function' && ctx.state === 'suspended') {
+        if (!ctx) return;
+        if (ctx.state !== 'running' && typeof ctx.resume === 'function') {
           ctx.resume();
+        }
+        if (!_audioPrimed) {
+          _audioPrimed = true;
+          try {
+            var buf = ctx.createBuffer(1, 1, ctx.sampleRate || 22050);
+            var src = ctx.createBufferSource();
+            src.buffer = buf;
+            src.connect(ctx.destination);
+            if (src.start) src.start(0); else if (src.noteOn) src.noteOn(0);
+          } catch (e) {}
         }
       } catch (e) {}
     }
-    ['pointerdown', 'touchstart', 'mousedown', 'keydown'].forEach(function (t) {
-      document.addEventListener(t, unlockAudio, {capture: true, passive: true});
+    ['pointerdown', 'touchstart', 'mousedown', 'keydown', 'click'].forEach(function (t) {
+      window.addEventListener(t, unlockAudio, true);
+      document.addEventListener(t, unlockAudio, true);
     });
+    // Expose for debugging.
+    window._unlockAudio = unlockAudio;
+    window._audioState = function () {
+      var ctx = window.Module && window.Module.SDL3 && window.Module.SDL3.audioContext;
+      return ctx ? {state: ctx.state, sampleRate: ctx.sampleRate, primed: _audioPrimed} : null;
+    };
 
     window.Module = {
       canvas: canvas,

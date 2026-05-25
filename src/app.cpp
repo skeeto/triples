@@ -54,7 +54,14 @@ App::~App() = default;
 
 bool App::initialize() {
     if (!renderer_.initialize("Triples", 480, 800)) return false;
-    mixer_.initialize();  // soft failure ok — game still playable without audio
+    // On web, the AudioContext underlying SDL3's audio device must be created
+    // during a real user-gesture activation, or it stays suspended forever on
+    // Firefox / mobile Safari. We defer mixer_.initialize() until the first
+    // SDL input event arrives (see try_init_audio_on_first_gesture_).
+#ifndef __EMSCRIPTEN__
+    mixer_.initialize();  // desktop has no autoplay restriction
+    audio_initialized_ = true;
+#endif
 
 #if defined(__APPLE__) && !defined(__EMSCRIPTEN__)
     input::macos_trackpad_init(renderer_.sdl_window());
@@ -87,7 +94,20 @@ bool App::initialize() {
     return true;
 }
 
+void App::try_init_audio_on_first_gesture_(const SDL_Event& e) {
+    if (audio_initialized_) return;
+    bool is_gesture = (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN ||
+                       e.type == SDL_EVENT_MOUSE_BUTTON_UP ||
+                       e.type == SDL_EVENT_FINGER_DOWN ||
+                       e.type == SDL_EVENT_FINGER_UP ||
+                       e.type == SDL_EVENT_KEY_DOWN);
+    if (!is_gesture) return;
+    audio_initialized_ = true;
+    mixer_.initialize();
+}
+
 void App::handle_event_(const SDL_Event& e) {
+    try_init_audio_on_first_gesture_(e);
     switch (e.type) {
         case SDL_EVENT_QUIT:
             running_ = false;

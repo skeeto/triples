@@ -43,9 +43,12 @@ private:
     std::uint64_t               best_score_ = 0;
     bool                        running_ = true;
     bool                        game_over_ = false;
+    bool                        audio_initialized_ = false;
     std::uint64_t               last_tick_ms_ = 0;
     std::uint64_t               game_over_at_ms_ = 0;
     static constexpr std::uint64_t kGameOverLockoutMs = 1000;
+
+    void try_init_audio_on_first_gesture_(const SDL_Event& e);
 
     void handle_event_(const SDL_Event& e);
     void on_pointer_down_(float x, float y, input::PointerEvent::Source src);

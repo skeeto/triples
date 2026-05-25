@@ -89,6 +89,13 @@ bool App::initialize() {
     recompute_best_();
 
     game_over_ = state_.is_game_over();
+    if (game_over_) {
+        // If we resumed a game that was already over, replay the tally so the
+        // user can see their final-score breakdown without having to play
+        // through again. Don't engage the lockout — there was no recent
+        // restart gesture to guard against.
+        build_tally_();
+    }
 
     last_tick_ms_ = SDL_GetTicks();
     return true;
@@ -293,8 +300,12 @@ void App::on_game_over_() {
     save_highscores_();
     recompute_best_();
 
-    // Tally up the final score: one "+N" per scoring tile (rank >= 3),
-    // staggered so they appear one after another.
+    build_tally_();
+}
+
+void App::build_tally_() {
+    // One "+N" per scoring tile (rank >= 3), staggered so they appear one
+    // after another.
     std::vector<render::ScoreTallyLabel> labels;
     labels.reserve(16);
     int order = 0;

@@ -66,6 +66,7 @@ private:
     void apply_commit_();
     void on_game_over_();
     void start_new_game_();
+    void build_tally_();
     void save_state_();
     void save_highscores_();
     void load_highscores_();

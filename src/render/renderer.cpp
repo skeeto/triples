@@ -213,11 +213,10 @@ void Renderer::draw_one_tile_(std::uint8_t rank, float center_x, float center_y,
         tr = 0xFF; tg = 0xFF; tb = 0xFF;
     }
     // Scale the tile number proportionally to the cell. Target line height
-    // is 55% of cell height (a touch under original Threes' chunky digits);
-    // if the number is too wide for the tile (long values like 6144 on a
-    // narrow cell), shrink to fit.
+    // is ~50% of cell height; if the number is too wide for the tile (long
+    // values like 6144 on a narrow cell), shrink to fit.
     const TextAtlas::Size sz = TextAtlas::Size::Large;
-    float scale = (layout_.cell_h * 0.55f) / text_.line_height(sz);
+    float scale = (layout_.cell_h * 0.50f) / text_.line_height(sz);
     float w = text_.measure_width(buf, sz, scale);
     const float max_w = layout_.cell_w * 0.82f;
     if (w > max_w) scale *= max_w / w;
@@ -391,18 +390,19 @@ void Renderer::draw_tally_(const Animations& anims) {
         std::memcpy(text + 1, buf, n);
         std::string_view label(text, n + 1);
 
-        // Match the tile number's scaling, but allow the +N to spill up to
-        // 15% past the tile width (the label can extend slightly outside).
+        // Distinctly smaller than the tile number — the +N is supporting
+        // info, not the headline. ~22% of cell height (vs 50% for the tile),
+        // allowed to spill up to 15% past the tile width.
         const TextAtlas::Size sz = TextAtlas::Size::Large;
-        float scale = (layout_.cell_h * 0.55f) / text_.line_height(sz);
+        float scale = (layout_.cell_h * 0.22f) / text_.line_height(sz);
         float label_w = text_.measure_width(label, sz, scale);
         const float max_w = layout_.cell_w * 1.15f;
         if (label_w > max_w) scale *= max_w / label_w;
 
-        // Position: text sits inside the upper portion of the tile, with
-        // just the top of the glyphs peeking past the tile's top edge.
-        float ascent      = text_.baseline(sz, scale);
-        float baseline    = top_y - 4.0f + ascent;
+        // Position: the label sits ON the tile in its upper-most strip, with
+        // just the tops of the glyphs peeking above the tile's top edge.
+        float ascent   = text_.baseline(sz, scale);
+        float baseline = top_y + ascent * 0.78f;  // glyphs mostly on the tile
         baseline -= (1.0f - fade_in) * 6.0f;
 
         std::uint8_t a = static_cast<std::uint8_t>(fade_in * 255.0f);

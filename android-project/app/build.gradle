@@ -21,10 +21,12 @@ android {
             cmake {
                 arguments "-DANDROID_PLATFORM=android-21",
                           "-DANDROID_STL=c++_static"
-                // arm64-v8a covers every modern phone; x86_64 lets the same
-                // APK run on the (arm64-host) Android Studio simulator when
-                // a phone isn't plugged in.
-                abiFilters 'arm64-v8a', 'x86_64'
+                // arm64-v8a — every modern phone.
+                // armeabi-v7a — older 32-bit phones AND Android Go / low-end
+                //               Samsung budget devices (e.g. Galaxy A13) that
+                //               run a 32-bit userspace even on 64-bit silicon.
+                // x86_64 — Android Studio's emulator on Apple Silicon hosts.
+                abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64'
             }
         }
     }

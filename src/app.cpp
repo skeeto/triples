@@ -101,16 +101,24 @@ bool App::initialize() {
     return true;
 }
 
+void App::init_audio_now() {
+    if (audio_initialized_) return;
+    audio_initialized_ = true;
+    mixer_.initialize();
+}
+
 void App::try_init_audio_on_first_gesture_(const SDL_Event& e) {
     if (audio_initialized_) return;
-    bool is_gesture = (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN ||
-                       e.type == SDL_EVENT_MOUSE_BUTTON_UP ||
-                       e.type == SDL_EVENT_FINGER_DOWN ||
+    // Fallback path: if the JS shell never calls into init_audio_now()
+    // (e.g. desktop builds, or web builds where the export isn't accessible
+    // yet), open the device when an activation-granting input event reaches
+    // the main loop. The JS path is preferred because the resulting
+    // AudioContext is created inside the gesture stack frame.
+    bool is_gesture = (e.type == SDL_EVENT_MOUSE_BUTTON_UP ||
                        e.type == SDL_EVENT_FINGER_UP ||
                        e.type == SDL_EVENT_KEY_DOWN);
     if (!is_gesture) return;
-    audio_initialized_ = true;
-    mixer_.initialize();
+    init_audio_now();
 }
 
 void App::handle_event_(const SDL_Event& e) {

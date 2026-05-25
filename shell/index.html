@@ -35,10 +35,55 @@
     border: 0;
     background: #1a1a1a;
   }
+  /* Splash overlay. iOS Safari refuses to activate the AudioContext during
+     drag gestures, so we need a tap before the game starts. The overlay
+     guarantees that first interaction is a tap. */
+  #splash {
+    position: fixed;
+    inset: 0;
+    background: #F8F2E5;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    cursor: pointer;
+    transition: opacity 0.25s ease-out;
+    font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  #splash.gone {
+    opacity: 0;
+    pointer-events: none;
+  }
+  #splash-title {
+    font-weight: 800;
+    font-size: 14vmin;
+    color: #2A2A2A;
+    letter-spacing: 0.02em;
+  }
+  #splash-hint {
+    margin-top: 6vmin;
+    font-weight: 500;
+    font-size: 4vmin;
+    color: #66CCFF;
+    letter-spacing: 0.1em;
+    text-transform: lowercase;
+    animation: splashPulse 1.6s ease-in-out infinite;
+  }
+  @keyframes splashPulse {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.55; }
+  }
 </style>
 </head>
 <body>
 <canvas id="canvas" tabindex="0" oncontextmenu="event.preventDefault()"></canvas>
+<div id="splash">
+  <div id="splash-title">Triples</div>
+  <div id="splash-hint">tap to play</div>
+</div>
 <script>
   (function () {
     // Globally neutralize preventDefault() for touch pointer events and
@@ -113,21 +158,39 @@
       window.addEventListener(t, multiTouchFilter, {capture: true});
     });
 
-    // Browser autoplay policy keeps SDL3's AudioContext suspended until a
-    // user gesture lets us resume it from a real event-handler frame. SDL3
-    // stashes the context at Module.SDL3.audioContext.
+    // Audio unlock. Browser autoplay policy keeps an AudioContext suspended
+    // unless it was created — or resumed — within a real user-gesture stack
+    // frame. C++ side normally calls SDL_OpenAudioDevice from
+    // try_init_audio_on_first_gesture_ in the main loop, but for touch
+    // input that's apparently too far from the original gesture frame on
+    // iOS Safari (Firefox / mobile Safari leave the resulting context
+    // suspended). Keyboard happens to work because SDL3's keydown path is
+    // short enough.
     //
-    // Strategy: on every gesture, resume() the context AND play a 1-sample
-    // silent buffer through the destination. The silent-buffer trick is the
-    // historic iOS Safari unlock, but Firefox and Chrome are happy with it
-    // too — at worst it's a no-op. Listeners are non-passive in capture phase
-    // and attached to both window and document so they fire before any
-    // canvas-level SDL3 handler that might stopPropagation().
+    // Reliable strategy: pre-create Module.SDL3.audioContext from the
+    // gesture handler ITSELF, so iOS sees it being constructed in-gesture
+    // (and starts it running). SDL3's audio init later checks for an
+    // existing Module.SDL3.audioContext and reuses it instead of building
+    // its own. We also resume() defensively and play the classic iOS
+    // 1-sample silent buffer on the first activation.
     var _audioPrimed = false;
     function unlockAudio() {
       try {
-        var ctx = window.Module && window.Module.SDL3 && window.Module.SDL3.audioContext;
-        if (!ctx) return;
+        if (!window.Module) window.Module = {};
+        if (!window.Module.SDL3) window.Module.SDL3 = {};
+        // Open SDL3's audio device from inside the gesture stack frame so
+        // its new AudioContext() runs while iOS-Safari user activation is
+        // still in effect.
+        if (window.Module._triples_init_audio) {
+          window.Module._triples_init_audio();
+        }
+        var ctx = window.Module.SDL3.audioContext;
+        if (!ctx) {
+          var AC = window.AudioContext || window.webkitAudioContext;
+          if (!AC) return;
+          ctx = new AC();
+          window.Module.SDL3.audioContext = ctx;
+        }
         if (ctx.state !== 'running' && typeof ctx.resume === 'function') {
           ctx.resume();
         }
@@ -143,10 +206,35 @@
         }
       } catch (e) {}
     }
-    ['pointerdown', 'touchstart', 'mousedown', 'keydown', 'click'].forEach(function (t) {
+    // Only register on events that grant the full user activation needed
+    // to *resume* an AudioContext on iOS Safari. The HTML spec lists these
+    // as "activation triggering input events"; pointerdown and touchstart
+    // are notably absent — they create the context but can't transition it
+    // from suspended → running. iOS Safari is additionally stricter for
+    // drag-style gestures (touchmove between touchstart and touchend), where
+    // even touchend doesn't unlock — hence the splash below.
+    ['pointerup', 'touchend', 'mouseup', 'keydown', 'click'].forEach(function (t) {
       window.addEventListener(t, unlockAudio, true);
       document.addEventListener(t, unlockAudio, true);
     });
+
+    // Tap-to-play splash. Dismissed by any activation gesture (tap, click,
+    // or key press), which is also what unlocks the AudioContext.
+    var splashEl = document.getElementById('splash');
+    var splashDismissed = false;
+    function dismissSplash(e) {
+      if (splashDismissed) return;
+      splashDismissed = true;
+      unlockAudio(e);
+      splashEl.classList.add('gone');
+      setTimeout(function () {
+        if (splashEl.parentNode) splashEl.parentNode.removeChild(splashEl);
+      }, 300);
+    }
+    ['pointerup', 'click'].forEach(function (t) {
+      splashEl.addEventListener(t, dismissSplash, true);
+    });
+    window.addEventListener('keydown', dismissSplash, true);
     // Expose for debugging.
     window._unlockAudio = unlockAudio;
     window._audioState = function () {

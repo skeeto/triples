@@ -29,6 +29,13 @@ public:
     // and runs forever (emscripten_set_main_loop drives it).
     bool tick();
 
+    // Open the SDL3 audio device + mixer if it hasn't been opened yet.
+    // Idempotent. The JS shell calls this directly from its first user
+    // gesture handler so SDL3's AudioContext creation lands inside the
+    // gesture stack frame (iOS Safari requires that for the context to
+    // start running instead of suspended).
+    void init_audio_now();
+
     // Public for the Emscripten main loop trampoline in main.cpp.
     void on_window_resize(int w, int h);
 

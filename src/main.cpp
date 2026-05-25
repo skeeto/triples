@@ -18,6 +18,15 @@ void web_tick() {
 
 }  // namespace
 
+#ifdef __EMSCRIPTEN__
+// Exported for the JS shell so it can initialize SDL3 audio from inside the
+// first user-gesture stack frame, which iOS Safari requires for the
+// AudioContext to start running instead of suspended.
+extern "C" EMSCRIPTEN_KEEPALIVE void triples_init_audio() {
+    if (g_app) g_app->init_audio_now();
+}
+#endif
+
 int main(int /*argc*/, char* /*argv*/[]) {
     triples::App app;
     if (!app.initialize()) return 1;

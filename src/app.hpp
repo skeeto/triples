@@ -89,6 +89,9 @@ private:
     void apply_commit_();
     void on_game_over_();
     void start_new_game_();
+    // Snapshots the current board, calls start_new_game_, and kicks off
+    // the cascading flip animation between the two boards.
+    void restart_with_flip_();
     void build_tally_();
     void save_state_();
     void save_highscores_();

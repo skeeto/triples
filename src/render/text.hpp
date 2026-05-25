@@ -40,14 +40,20 @@ public:
     float baseline(Size sz, float scale = 1.0f) const;
 
     // Draw `text` at (x, y) — y is the BASELINE. Color is RGBA.
+    // `scale_x_extra` / `scale_y_extra` apply anisotropic squish/stretch ON
+    // TOP of `scale`; defaulting to 1.0 leaves the old isotropic behavior
+    // unchanged. Used by the tile flip animation so the digit follows the
+    // tile's horizontal squish through the flip.
     void draw(SDL_Renderer* r, std::string_view text, Size sz,
               float x, float y, std::uint8_t cr, std::uint8_t cg, std::uint8_t cb,
-              std::uint8_t ca = 255, float scale = 1.0f) const;
+              std::uint8_t ca = 255, float scale = 1.0f,
+              float scale_x_extra = 1.0f, float scale_y_extra = 1.0f) const;
 
     // Convenience: draw centered at (cx, baseline_y).
     void draw_centered(SDL_Renderer* r, std::string_view text, Size sz,
                        float cx, float baseline_y, std::uint8_t cr, std::uint8_t cg,
-                       std::uint8_t cb, std::uint8_t ca = 255, float scale = 1.0f) const;
+                       std::uint8_t cb, std::uint8_t ca = 255, float scale = 1.0f,
+                       float scale_x_extra = 1.0f, float scale_y_extra = 1.0f) const;
 
 private:
     struct Impl;

@@ -140,13 +140,18 @@ float TextAtlas::baseline(Size sz, float scale) const {
 
 void TextAtlas::draw(SDL_Renderer* r, std::string_view text, Size sz,
                      float x, float y, std::uint8_t cr, std::uint8_t cg, std::uint8_t cb,
-                     std::uint8_t ca, float scale) const {
+                     std::uint8_t ca, float scale,
+                     float scale_x_extra, float scale_y_extra) const {
     if (!impl_) return;
     const BakedSize* b = impl_->by_size(sz);
     if (!b->tex) return;
     SDL_SetTextureColorMod(b->tex, cr, cg, cb);
     SDL_SetTextureAlphaMod(b->tex, ca);
-    // Run the pen in baked space (scale=1) and scale quad output around (x, y).
+    // Run the pen in baked space and scale quad output around (x, y).
+    // sx and sy can differ so callers can squish the text horizontally to
+    // match e.g. a tile-flip animation around its vertical axis.
+    const float sx = scale * scale_x_extra;
+    const float sy = scale * scale_y_extra;
     const int first = impl_->first_char;
     const int count = impl_->char_count;
     float pen_x = 0.0f, pen_y = 0.0f;
@@ -159,8 +164,8 @@ void TextAtlas::draw(SDL_Renderer* r, std::string_view text, Size sz,
                             static_cast<int>(ch) - first, &pen_x, &pen_y, &q, 1);
         SDL_FRect src{q.s0 * kAtlasW, q.t0 * kAtlasH,
                       (q.s1 - q.s0) * kAtlasW, (q.t1 - q.t0) * kAtlasH};
-        SDL_FRect dst{x + q.x0 * scale, y + q.y0 * scale,
-                      (q.x1 - q.x0) * scale, (q.y1 - q.y0) * scale};
+        SDL_FRect dst{x + q.x0 * sx, y + q.y0 * sy,
+                      (q.x1 - q.x0) * sx, (q.y1 - q.y0) * sy};
         SDL_RenderTexture(r, b->tex, &src, &dst);
     }
 }
@@ -168,9 +173,13 @@ void TextAtlas::draw(SDL_Renderer* r, std::string_view text, Size sz,
 void TextAtlas::draw_centered(SDL_Renderer* r, std::string_view text, Size sz,
                               float cx, float baseline_y, std::uint8_t cr,
                               std::uint8_t cg, std::uint8_t cb, std::uint8_t ca,
-                              float scale) const {
-    float w = measure_width(text, sz, scale);
-    draw(r, text, sz, cx - w * 0.5f, baseline_y, cr, cg, cb, ca, scale);
+                              float scale,
+                              float scale_x_extra, float scale_y_extra) const {
+    // Measure at the uniform scale, then apply the horizontal squish to the
+    // left-edge offset so the squish happens AROUND `cx`.
+    float w = measure_width(text, sz, scale) * scale_x_extra;
+    draw(r, text, sz, cx - w * 0.5f, baseline_y, cr, cg, cb, ca, scale,
+         scale_x_extra, scale_y_extra);
 }
 
 }  // namespace triples::render

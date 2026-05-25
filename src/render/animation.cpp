@@ -73,6 +73,13 @@ void Animations::step(float dt) {
     if (!tally_labels.empty()) {
         tally_t += dt;
     }
+    if (restart_flip.active) {
+        restart_flip.t += dt;
+        if (restart_flip.t >= restart_flip.total_dur()) {
+            restart_flip.active = false;
+            restart_flip.t      = 0.0f;
+        }
+    }
     erase_finished(score_popups);
     erase_finished(merge_bumps);
     erase_finished(spawn_fades);
@@ -173,11 +180,19 @@ void Animations::clear() {
     shake_dur = 0.0f;
     tally_labels.clear();
     tally_t = 0.0f;
+    restart_flip.active = false;
+    restart_flip.t      = 0.0f;
 }
 
 void Animations::start_tally(std::vector<ScoreTallyLabel> labels) {
     tally_labels = std::move(labels);
     tally_t = 0.0f;
+}
+
+void Animations::start_restart_flip(const std::array<std::uint8_t, 16>& old_cells) {
+    restart_flip.active    = true;
+    restart_flip.t         = 0.0f;
+    restart_flip.old_cells = old_cells;
 }
 
 }  // namespace triples::render

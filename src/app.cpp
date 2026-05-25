@@ -141,10 +141,13 @@ void App::handle_event_(const SDL_Event& e) {
             break;
         }
         case SDL_EVENT_KEY_DOWN: {
+            // Mid-flip the board is changing under the player's feet — no
+            // sense letting them spam input until the cascade finishes.
+            if (anims_.restart_flip.active) return;
             if (game_over_) {
                 if (e.key.key == SDLK_RETURN || e.key.key == SDLK_SPACE
                     || e.key.key == SDLK_R) {
-                    start_new_game_();
+                    restart_with_flip_();
                 }
                 return;
             }
@@ -232,6 +235,9 @@ void App::handle_event_(const SDL_Event& e) {
 }
 
 void App::on_pointer_down_(float x, float y, input::PointerEvent::Source src) {
+    // Block input while the restart cascade is animating — same reason as
+    // the KEY_DOWN guard above.
+    if (anims_.restart_flip.active) return;
     // Restart button takes precedence over board input at any time — pressing
     // it always restarts. The drag controller stays Idle (no Down dispatched),
     // so the gesture's subsequent move/up events are silently dropped.
@@ -243,7 +249,7 @@ void App::on_pointer_down_(float x, float y, input::PointerEvent::Source src) {
         const std::uint64_t now = SDL_GetTicks();
         if (now - last_restart_at_ms_ >= kRestartDebounceMs) {
             last_restart_at_ms_ = now;
-            start_new_game_();
+            restart_with_flip_();
         }
         return;
     }
@@ -380,6 +386,14 @@ void App::start_new_game_() {
     drag_ = input::DragController{};
     game_over_ = false;
     save_state_();
+}
+
+void App::restart_with_flip_() {
+    // Snapshot the OLD board BEFORE we wipe state — the renderer reads it
+    // through Animations::restart_flip during the cascading flip.
+    auto old_cells = state_.board.cells;
+    start_new_game_();          // clears anims, resets drag, picks fresh seed
+    anims_.start_restart_flip(old_cells);
 }
 
 void App::save_state_() {

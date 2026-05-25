@@ -316,12 +316,37 @@ void Renderer::draw_one_tile_(std::uint8_t rank, float center_x, float center_y,
     // Center text vertically in the upper ~78% of the tile (above the bottom band).
     float text_center_y = center_y - layout_.tile_h * 0.5f + (layout_.tile_h * 0.78f) * 0.5f;
     float baseline_y = text_center_y + h * 0.32f;
+    // Pass scale_x / scale_y through to the text so the digit follows
+    // whatever transform the tile texture has — most importantly the
+    // restart flip's horizontal squish, but also (more subtly) the
+    // merge bump and stuck-wall squish.
     text_digits_.draw_centered(sdl_renderer_, buf, sz, center_x, baseline_y,
-                               tr, tg, tb, alpha, scale);
+                               tr, tg, tb, alpha, scale, scale_x, scale_y);
 }
 
 void Renderer::draw_tiles_(const game::GameState& state, const input::DragController& drag,
                            const Animations& anims) {
+    // Restart flip overrides everything else — the board has just been
+    // reseeded and we're showing each cell flip from its OLD rank (first half
+    // of the per-cell phase, x squishing 1 → 0 around its vertical axis) to
+    // its NEW rank (second half, x growing 0 → 1). Top-left → bottom-right
+    // diagonal cascade. cos(p·π) gives the natural axis-rotation curve.
+    if (anims.restart_flip.active) {
+        const std::uint8_t current_max = state.board.max_rank();
+        for (int i = 0; i < 16; ++i) {
+            float p = anims.restart_flip.cell_phase(i);
+            std::uint8_t rank = (p < 0.5f) ? anims.restart_flip.old_cells[i]
+                                           : state.board.cells[i];
+            if (rank == 0) continue;
+            float scale_x = std::fabs(std::cos(p * 3.14159265f));
+            int r = i / 4, c = i % 4;
+            float cx = layout_.board_x + c * layout_.cell_w + layout_.cell_w * 0.5f;
+            float cy = layout_.board_y + r * layout_.cell_h + layout_.cell_h * 0.5f;
+            draw_one_tile_(rank, cx, cy, scale_x, 1.0f, 255, current_max);
+        }
+        return;
+    }
+
     // Build a "source → destination" map for the current drag direction.
     std::array<int, 16> src_to_dst;
     for (auto& v : src_to_dst) v = -1;

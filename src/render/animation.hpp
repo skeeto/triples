@@ -1,4 +1,5 @@
 #pragma once
+#include <array>
 #include <cstdint>
 #include <vector>
 
@@ -49,6 +50,34 @@ struct ScoreTallyLabel {
     float         delay;      // seconds after tally start before this label appears
 };
 
+// Restart flip: each cell flips around its vertical axis in a top-left →
+// bottom-right diagonal cascade, showing the OLD tile through the first half
+// of its flip (scaling x → 0) and the NEW tile through the second half
+// (x growing 0 → 1). Total ≈ 0.7 s.
+struct RestartFlip {
+    bool                         active = false;
+    float                        t      = 0.0f;
+    std::array<std::uint8_t, 16> old_cells{};
+
+    static constexpr float kFlipDur = 0.32f;   // per-cell flip
+    static constexpr float kStagger = 0.06f;   // delay between diagonals
+    static constexpr int   kMaxDiagonal = 6;   // (3+3) on a 4x4 grid
+
+    float total_dur() const noexcept {
+        return kMaxDiagonal * kStagger + kFlipDur;
+    }
+    // Per-cell phase in [0, 1]: 0 = not started (or just started),
+    // 0.5 = edge-on (the OLD/NEW swap), 1.0 = done.
+    float cell_phase(int idx) const noexcept {
+        int r = idx / 4, c = idx % 4;
+        float delay = float(r + c) * kStagger;
+        float u = t - delay;
+        if (u <= 0.0f)        return 0.0f;
+        if (u >= kFlipDur)    return 1.0f;
+        return u / kFlipDur;
+    }
+};
+
 class Animations {
 public:
     Animations() {
@@ -70,6 +99,7 @@ public:
     void emit_sparkles(float x, float y, std::uint8_t r, std::uint8_t g, std::uint8_t b);
     void emit_confetti(float x_min, float x_max);
     void start_tally(std::vector<ScoreTallyLabel> labels);
+    void start_restart_flip(const std::array<std::uint8_t, 16>& old_cells);
 
     // Current screen shake offset (px). Renderer applies before everything.
     void shake_offset(float& out_x, float& out_y) const;
@@ -90,6 +120,8 @@ public:
 
     std::vector<ScoreTallyLabel> tally_labels;
     float                        tally_t = 0.0f;
+
+    RestartFlip                  restart_flip;
 };
 
 // Eased value in [0, 1].

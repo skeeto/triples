@@ -144,6 +144,12 @@ float Renderer::cell_size_px() const noexcept {
     return layout_.cell_w;
 }
 
+float Renderer::pixel_density() const noexcept {
+    if (!window_) return 1.0f;
+    float d = SDL_GetWindowPixelDensity(window_);
+    return (d > 0.0f) ? d : 1.0f;
+}
+
 int Renderer::cell_for_point(float x, float y) const noexcept {
     if (x < layout_.board_x || y < layout_.board_y) return -1;
     float lx = x - layout_.board_x;
@@ -196,8 +202,10 @@ void Renderer::draw_one_tile_(std::uint8_t rank, float center_x, float center_y,
     std::uint8_t tr = 0x2A, tg = 0x2A, tb = 0x2A;
     if (rank == 1 || rank == 2) {
         tr = 0xFF; tg = 0xFF; tb = 0xFF;
-    } else if (rank == current_max) {
-        tr = 0xD9; tg = 0x2E; tb = 0x2E;
+    } else if (rank == current_max && rank >= 4) {
+        // Highest tile gets a red callout — but only once we're past the
+        // starting white tiles (value 6 and up).
+        tr = 0xFF; tg = 0x66; tb = 0x80;
     } else if (rank == 15) {
         tr = 0xFF; tg = 0xFF; tb = 0xFF;
     }

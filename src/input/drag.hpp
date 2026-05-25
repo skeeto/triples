@@ -51,10 +51,16 @@ struct DragController {
     // current layout. Used to convert finger displacement into overlap.
     float             cell_size_px = 100.0f;
 
+    // Device-pixels-per-CSS-pixel (≈ window.devicePixelRatio). The app sets
+    // this so the lock dead zone and grace radius track a real physical
+    // distance instead of shrinking on high-DPI screens.
+    float             pixel_density = 1.0f;
+
     // Threshold for committing the move (fraction of one cell).
     static constexpr float kCommitThreshold = 0.25f;
-    // Dead zone before direction-lock (pixels).
-    static constexpr float kLockDeadZone    = 6.0f;
+    // Dead zone before direction-lock, expressed in CSS pixels (≈ 1/96 inch
+    // at nominal viewing distance, so ~3mm). Scaled by pixel_density at use.
+    static constexpr float kLockDeadZoneCss = 12.0f;
     // Animation durations (seconds).
     static constexpr float kCommitDuration  = 0.08f;
     static constexpr float kCancelDuration  = 0.12f;

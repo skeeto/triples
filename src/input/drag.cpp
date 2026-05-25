@@ -58,13 +58,16 @@ void DragController::on_pointer(const PointerEvent& e, const game::Board& board)
                 float ady = std::fabs(dy);
                 float major = std::max(adx, ady);
                 float minor = std::min(adx, ady);
-                if (major < kLockDeadZone) return;
-                // Only lock once the user's intent is clear — either one axis
-                // is clearly dominant (major > 1.5×minor) or the gesture is
-                // large enough that we can't keep waiting (force-lock at 3×
-                // deadzone). This stops a tiny initial vertical jitter from
-                // hijacking what was meant to be a horizontal swipe.
-                if (major < minor * 1.5f && major < kLockDeadZone * 3.0f) return;
+                // Grace radius: roughly a thumb-jitter (~3mm). During this
+                // zone the gesture has no axis yet and the tiles don't move.
+                const float deadzone = kLockDeadZoneCss * pixel_density;
+                if (major < deadzone) return;
+                // Once past the grace radius, lock to the dominant axis only
+                // if it's clearly dominant (1.5× the minor) or the gesture
+                // has grown large enough that we can't keep waiting (3× the
+                // grace radius). This stops a one-pixel perpendicular jitter
+                // at the start from hijacking the intended direction.
+                if (major < minor * 1.5f && major < deadzone * 3.0f) return;
                 if (adx > ady) {
                     dir = (dx > 0.0f) ? game::Direction::Right : game::Direction::Left;
                 } else {

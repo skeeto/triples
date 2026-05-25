@@ -170,7 +170,8 @@ void App::on_pointer_down_(float x, float y, input::PointerEvent::Source src) {
         return;
     }
     input::PointerEvent ev{input::PointerKind::Down, x, y, src};
-    drag_.cell_size_px = renderer_.cell_size_px();
+    drag_.cell_size_px  = renderer_.cell_size_px();
+    drag_.pixel_density = renderer_.pixel_density();
     drag_.on_pointer(ev, state_.board);
 }
 

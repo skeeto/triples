@@ -12,17 +12,24 @@ namespace triples::render {
 
 namespace {
 
-// Tile colors keyed by rank. Returns {r, g, b} for the background and the
-// text color is determined separately in the renderer.
+// Tile colors keyed by rank. Returns {r, g, b} for the body and a separate
+// color for the hard bottom edge.
 struct TileBG {
     std::uint8_t r, g, b;
 };
 
 TileBG bg_for_rank(std::uint8_t rank) {
-    if (rank == 1) return {0x00, 0x99, 0xCC};   // blue
-    if (rank == 2) return {0xE6, 0x45, 0x45};   // red
+    if (rank == 1) return {0x66, 0xCC, 0xFF};   // blue
+    if (rank == 2) return {0xFF, 0x66, 0x80};   // red
     if (rank == 15) return {0x2A, 0x2A, 0x2A};  // hidden 13th character — dark
     return {0xFC, 0xFC, 0xFC};                  // white
+}
+
+TileBG edge_for_rank(std::uint8_t rank) {
+    if (rank == 1) return {0x5F, 0xA9, 0xF1};   // darker blue
+    if (rank == 2) return {0xCC, 0x52, 0x7A};   // darker red
+    if (rank == 15) return {0x16, 0x16, 0x16};  // darker grey for hidden tile
+    return {0xFF, 0xCC, 0x66};                  // yellow band under whites
 }
 
 // Anti-aliased rounded-rect coverage at (px, py) within a w×h rect with corner
@@ -51,36 +58,45 @@ float rounded_rect_coverage(float px, float py, float w, float h, float r) {
 }
 
 void bake_tile_pixels(std::vector<unsigned char>& rgba, int w, int h, std::uint8_t rank) {
-    TileBG bg = bg_for_rank(rank);
+    TileBG body = bg_for_rank(rank);
+    TileBG edge = edge_for_rank(rank);
     const float radius = std::min(w, h) * 0.10f;
-    const float shade_band_start = h * (1.0f - 0.22f);
+    // The "edge" is the colored band peeking out below the front face. The
+    // face itself is a rounded rectangle — its bottom corners are rounded too,
+    // so a sliver of the edge color shows along the bottom of the tile (with
+    // the corner curve matching the outer tile mask).
+    const float edge_band_frac = 0.12f;
+    const float body_h         = static_cast<float>(h) * (1.0f - edge_band_frac);
     rgba.assign(static_cast<std::size_t>(w) * h * 4, 0u);
     for (int y = 0; y < h; ++y) {
         for (int x = 0; x < w; ++x) {
-            float cov = rounded_rect_coverage(
-                static_cast<float>(x) + 0.5f,
-                static_cast<float>(y) + 0.5f,
-                static_cast<float>(w), static_cast<float>(h), radius);
-            if (cov <= 0.0f) continue;
+            float px = static_cast<float>(x) + 0.5f;
+            float py = static_cast<float>(y) + 0.5f;
+            float outer_cov = rounded_rect_coverage(
+                px, py, static_cast<float>(w), static_cast<float>(h), radius);
+            if (outer_cov <= 0.0f) continue;
 
-            float br = bg.r / 255.0f;
-            float bgc = bg.g / 255.0f;
-            float bbc = bg.b / 255.0f;
+            float body_cov = rounded_rect_coverage(
+                px, py, static_cast<float>(w), body_h, radius);
 
-            // Bottom edge: gradient over the bottom 22% band, multiply down to 0.78
-            // (more pronounced shading so the "edge" reads clearly).
-            if (y > shade_band_start) {
-                float band_t = (y - shade_band_start) / (h - shade_band_start);
-                band_t = std::clamp(band_t, 0.0f, 1.0f);
-                float k = 1.0f - 0.22f * band_t;
-                br *= k; bgc *= k; bbc *= k;
+            float r, g, b;
+            if (body_cov >= 1.0f) {
+                r = body.r; g = body.g; b = body.b;
+            } else if (body_cov <= 0.0f) {
+                r = edge.r; g = edge.g; b = edge.b;
+            } else {
+                // Anti-aliased blend along the body's bottom curve.
+                float t = body_cov;
+                r = body.r * t + edge.r * (1.0f - t);
+                g = body.g * t + edge.g * (1.0f - t);
+                b = body.b * t + edge.b * (1.0f - t);
             }
 
             int idx = (y * w + x) * 4;
-            rgba[idx + 0] = static_cast<unsigned char>(br * 255.0f);
-            rgba[idx + 1] = static_cast<unsigned char>(bgc * 255.0f);
-            rgba[idx + 2] = static_cast<unsigned char>(bbc * 255.0f);
-            rgba[idx + 3] = static_cast<unsigned char>(cov * 255.0f);
+            rgba[idx + 0] = static_cast<unsigned char>(r);
+            rgba[idx + 1] = static_cast<unsigned char>(g);
+            rgba[idx + 2] = static_cast<unsigned char>(b);
+            rgba[idx + 3] = static_cast<unsigned char>(outer_cov * 255.0f);
         }
     }
 }

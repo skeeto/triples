@@ -50,6 +50,10 @@ public:
     // controller each frame.
     float cell_size_px() const noexcept;
 
+    // Device pixels per CSS pixel. Used by the drag controller to keep its
+    // lock dead-zone roughly constant in physical units across DPI scales.
+    float pixel_density() const noexcept;
+
     SDL_Renderer* sdl_renderer() const noexcept { return sdl_renderer_; }
     SDL_Window*   sdl_window()   const noexcept { return window_; }
 

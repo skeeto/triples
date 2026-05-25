@@ -1,0 +1,15 @@
+# Gradle build artifacts + caches.
+.gradle/
+build/
+app/build/
+app/.cxx/
+
+# Per-machine SDK path — `sdk.dir=/path/to/Android/sdk`. Each developer
+# generates this for their own setup (see README).
+local.properties
+
+# Android Studio / IntelliJ project files. The repo is configured by
+# Gradle alone; importing into Studio regenerates these.
+.idea/
+*.iml
+captures/

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The fill color the launcher shows where the adaptive-icon
+         foreground is transparent. Matches the tile face color so the
+         icon reads as a clean white background where the mask clips
+         past the foreground design. -->
+    <color name="ic_launcher_background">#FCFCFC</color>
+</resources>

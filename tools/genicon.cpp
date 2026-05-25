@@ -475,5 +475,41 @@ int main() {
         std::printf("%s  (%dx%d RGBA)\n", ic.path, ic.size, ic.size);
     }
 
+    // --- Android launcher icons ---
+    // Each density bucket gets two PNGs:
+    //   ic_launcher.png             — legacy static icon (Android 5–7)
+    //   ic_launcher_foreground.png  — adaptive-icon foreground (Android 8+).
+    //                                 Same design, larger size; the
+    //                                 launcher applies its own mask
+    //                                 (circle / squircle / square / …).
+    // res/mipmap-anydpi-v26/ic_launcher.xml + res/values/ic_launcher_background.xml
+    // hand-written; we only emit the PNG payloads here.
+    struct AndroidDpi { const char* name; int legacy; int adaptive; };
+    const AndroidDpi android_dpi[] = {
+        {"mdpi",      48, 108},   //  ×1
+        {"hdpi",      72, 162},   //  ×1.5
+        {"xhdpi",     96, 216},   //  ×2
+        {"xxhdpi",   144, 324},   //  ×3
+        {"xxxhdpi",  192, 432},   //  ×4
+    };
+    char path_buf[256];
+    for (const auto& d : android_dpi) {
+        std::snprintf(path_buf, sizeof(path_buf),
+            "android-project/app/src/main/res/mipmap-%s/ic_launcher.png",
+            d.name);
+        auto px = rasterizeIOSAt(d.legacy);
+        stbi_write_png(path_buf, d.legacy, d.legacy, 4,
+                       px.data(), d.legacy * 4);
+        std::printf("%s  (%dx%d RGBA)\n", path_buf, d.legacy, d.legacy);
+
+        std::snprintf(path_buf, sizeof(path_buf),
+            "android-project/app/src/main/res/mipmap-%s/ic_launcher_foreground.png",
+            d.name);
+        auto fg = rasterizeIOSAt(d.adaptive);
+        stbi_write_png(path_buf, d.adaptive, d.adaptive, 4,
+                       fg.data(), d.adaptive * 4);
+        std::printf("%s  (%dx%d RGBA)\n", path_buf, d.adaptive, d.adaptive);
+    }
+
     return 0;
 }

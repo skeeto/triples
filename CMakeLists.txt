@@ -13,11 +13,19 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "" FORCE)
 endif()
 
-# --- SDL3 via FetchContent (static, pinned to release-3.2.30) -----------------
+# --- SDL3 via FetchContent (static everywhere, shared on Android) -------------
+# Android needs libSDL3.so as a standalone file inside the APK so the Java
+# side's System.loadLibrary("SDL3") can find it. Everywhere else we statically
+# link SDL3 into the executable for one-file distribution.
 include(FetchContent)
 set(FETCHCONTENT_QUIET OFF)
-set(SDL_SHARED OFF CACHE BOOL "" FORCE)
-set(SDL_STATIC ON  CACHE BOOL "" FORCE)
+if(ANDROID)
+    set(SDL_SHARED ON  CACHE BOOL "" FORCE)
+    set(SDL_STATIC OFF CACHE BOOL "" FORCE)
+else()
+    set(SDL_SHARED OFF CACHE BOOL "" FORCE)
+    set(SDL_STATIC ON  CACHE BOOL "" FORCE)
+endif()
 set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
 set(SDL_TESTS OFF CACHE BOOL "" FORCE)
 set(SDL_INSTALL OFF CACHE BOOL "" FORCE)
@@ -65,22 +73,40 @@ set(APP_SOURCES
     src/app.cpp
 )
 
-# WIN32: link the GUI ("windows") subsystem so launching the .exe doesn't
-# open a console window — SDL3 supplies the WinMain entry point.
-# MACOSX_BUNDLE: produce Triples.app so Dock / Cmd-Tab show the bundled icon
-# and metadata rather than a generic terminal binary.
-# Both flags are silently ignored on platforms that don't apply.
-add_executable(triples WIN32 MACOSX_BUNDLE
-    ${APP_SOURCES} ${GAME_SOURCES} ${RENDER_SOURCES} ${INPUT_SOURCES} ${AUDIO_SOURCES}
-    ${EMBEDDED_RESOURCE_SOURCES}
-)
+# Android: the Java side loads our code via System.loadLibrary("triples"),
+# which requires a SHARED libtriples.so. Everywhere else we build an
+# executable — WIN32 picks the GUI subsystem on Windows (no console window),
+# MACOSX_BUNDLE produces Triples.app for Dock / Cmd-Tab branding. Both flags
+# are silently ignored on platforms they don't apply to.
+if(ANDROID)
+    add_library(triples SHARED
+        ${APP_SOURCES} ${GAME_SOURCES} ${RENDER_SOURCES} ${INPUT_SOURCES} ${AUDIO_SOURCES}
+        ${EMBEDDED_RESOURCE_SOURCES}
+    )
+else()
+    add_executable(triples WIN32 MACOSX_BUNDLE
+        ${APP_SOURCES} ${GAME_SOURCES} ${RENDER_SOURCES} ${INPUT_SOURCES} ${AUDIO_SOURCES}
+        ${EMBEDDED_RESOURCE_SOURCES}
+    )
+endif()
 target_include_directories(triples PRIVATE
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/third_party
 )
-target_link_libraries(triples PRIVATE SDL3::SDL3-static)
+# Android links against the shared SDL3 (libSDL3.so) Gradle packages
+# alongside libtriples.so. Other platforms link the static SDL3 alias.
+if(ANDROID)
+    target_link_libraries(triples PRIVATE SDL3::SDL3-shared)
+else()
+    target_link_libraries(triples PRIVATE SDL3::SDL3-static)
+endif()
 
-if(EMSCRIPTEN)
+if(ANDROID)
+    # Android: app-private writable directory via SDL_GetPrefPath. No
+    # special framework links — SDL3 (shared) and the NDK's libm/liblog
+    # come in via SDL3::SDL3-shared above.
+    target_sources(triples PRIVATE src/platform/persistence_android.cpp)
+elseif(EMSCRIPTEN)
     target_sources(triples PRIVATE src/platform/persistence_web.cpp)
     target_link_options(triples PRIVATE
         -sALLOW_MEMORY_GROWTH=1
@@ -185,9 +211,9 @@ else()
 endif()
 
 # --- Tests (desktop only) -----------------------------------------------------
-# Skip on web and on iOS — the test binary depends on building+linking on the
-# host, which neither toolchain is set up to run.
-if(NOT EMSCRIPTEN AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+# Skip on web, iOS, and Android — none of these toolchains is set up to run
+# host-built test binaries from the build directory.
+if(NOT EMSCRIPTEN AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS" AND NOT ANDROID)
     enable_testing()
     add_subdirectory(tests)
 endif()
@@ -203,7 +229,9 @@ endif()
 #
 # iOS isn't packaged via CPack — the deliverable for Simulator testing is the
 # Xcode-built .app directory, which `xcrun simctl install` handles directly.
-if(NOT EMSCRIPTEN AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+# Android isn't either — Gradle assembles the .so + Java + resources into an
+# .apk, separate from this CMake build.
+if(NOT EMSCRIPTEN AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS" AND NOT ANDROID)
     install(TARGETS triples
         RUNTIME DESTINATION .
         BUNDLE  DESTINATION .)

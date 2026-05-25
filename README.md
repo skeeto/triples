@@ -92,6 +92,42 @@ identifier and a provisioning profile from the Developer portal).
 Simulator will show the default generic icon on the home screen until we
 wire that up.
 
+### Android (APK, sideload)
+
+Builds a debug-signed `.apk` you can install on a phone with `adb`.
+Build flow is Gradle-driven (it invokes our CMake under the hood):
+
+```sh
+cd android-project
+./gradlew assembleDebug      # first build is slow — fetches Gradle deps + SDL3
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
+
+The APK ships with both `arm64-v8a` (any modern phone) and `x86_64`
+(Android Studio's emulator on Apple Silicon hosts) ABI variants.
+
+**Prereqs.** Beyond `brew install --cask android-studio android-ndk`:
+
+1. Launch `Android Studio.app` once and let the setup wizard install
+   the SDK (it lands at `~/Library/Android/sdk`). You only need the
+   "Android SDK Platform 35" + "Android SDK Build-Tools" + "Android
+   SDK Platform-Tools" components — Studio installs them by default.
+2. Tell Gradle where the SDK lives: create `android-project/local.properties`
+   with one line:
+
+       sdk.dir=/Users/<you>/Library/Android/sdk
+
+   (Or set `ANDROID_HOME` in your shell. Studio writes this file
+   automatically if you ever import the project there.)
+
+CLI-only alternative: `brew install --cask android-commandlinetools`,
+then `sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"`.
+
+To sideload, enable Developer Options + USB debugging on the phone,
+plug it in, accept the RSA fingerprint prompt, then run the `adb install`
+above. Emulator alternative: open Android Studio's AVD Manager, boot any
+arm64-v8a image, then the same `adb install` command targets it.
+
 ## Packaging
 
 For everything except iOS, CPack assembles the deliverable directly out of
@@ -163,8 +199,11 @@ src/render/      SDL3 rendering + animation
 src/input/       drag state machine + macOS trackpad shim
 src/audio/       procedural SFX (no asset files at runtime)
 src/platform/    per-OS persistence (localStorage on web, %APPDATA% /
-                 $XDG_DATA_HOME / ~/Library elsewhere)
+                 $XDG_DATA_HOME / ~/Library / SDL_GetPrefPath sandbox)
 shell/           Emscripten HTML shell + favicon
+android-project/ Gradle scaffolding (Java SDLActivity subclass, manifest,
+                 resources, adaptive-icon mipmaps) — points at the root
+                 CMakeLists for native builds
 tools/           icon generator
 tests/           game-logic unit tests
 ```

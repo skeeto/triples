@@ -16,13 +16,17 @@ constexpr int kAtlasW = 1024;
 constexpr int kAtlasH = 1024;
 constexpr int kFirstChar = 32;
 constexpr int kCharCount = 0x7E - kFirstChar + 1;
+// Pixels of zero-alpha around each glyph in the atlas. Lets callers shift the
+// rendered glyph by up to this many pixels (e.g. for a black-outline halo)
+// without sampling neighbour glyphs.
+constexpr int kGlyphPadding = 4;
 
 struct BakedSize {
-    std::array<stbtt_bakedchar, kCharCount> chars{};
-    SDL_Texture*                            tex = nullptr;
-    float                                   px = 0.0f;
-    float                                   line = 0.0f;
-    float                                   ascent = 0.0f;
+    std::array<stbtt_packedchar, kCharCount> chars{};
+    SDL_Texture*                             tex = nullptr;
+    float                                    px = 0.0f;
+    float                                    line = 0.0f;
+    float                                    ascent = 0.0f;
 };
 
 }  // namespace
@@ -39,10 +43,22 @@ struct TextAtlas::Impl {
     bool build_size(SDL_Renderer* r, const unsigned char* data,
                     BakedSize& out, float px) {
         std::vector<unsigned char> bitmap(static_cast<std::size_t>(kAtlasW) * kAtlasH, 0u);
-        int res = stbtt_BakeFontBitmap(data, 0, px,
-                                       bitmap.data(), kAtlasW, kAtlasH,
-                                       kFirstChar, kCharCount, out.chars.data());
-        if (res <= 0) return false;
+        stbtt_pack_context spc;
+        if (!stbtt_PackBegin(&spc, bitmap.data(), kAtlasW, kAtlasH, kAtlasW,
+                             kGlyphPadding, nullptr)) {
+            return false;
+        }
+        stbtt_pack_range range{};
+        range.font_size = px;
+        range.first_unicode_codepoint_in_range = kFirstChar;
+        range.array_of_unicode_codepoints = nullptr;
+        range.num_chars = kCharCount;
+        range.chardata_for_range = out.chars.data();
+        range.h_oversample = 1;
+        range.v_oversample = 1;
+        int ok = stbtt_PackFontRanges(&spc, data, 0, &range, 1);
+        stbtt_PackEnd(&spc);
+        if (!ok) return false;
 
         // Convert alpha-only to RGBA32 with white RGB and alpha = sample,
         // so SDL_SetTextureColorMod gives us tinted glyphs.
@@ -99,9 +115,9 @@ float TextAtlas::measure_width(std::string_view text, Size sz, float scale) cons
     for (char c : text) {
         unsigned ch = static_cast<unsigned char>(c);
         if (ch < kFirstChar || ch >= kFirstChar + kCharCount) continue;
-        stbtt_GetBakedQuad(const_cast<stbtt_bakedchar*>(b->chars.data()),
-                           kAtlasW, kAtlasH,
-                           static_cast<int>(ch) - kFirstChar, &x, &y, &q, 1);
+        stbtt_GetPackedQuad(const_cast<stbtt_packedchar*>(b->chars.data()),
+                            kAtlasW, kAtlasH,
+                            static_cast<int>(ch) - kFirstChar, &x, &y, &q, 1);
     }
     return x * scale;
 }
@@ -130,9 +146,9 @@ void TextAtlas::draw(SDL_Renderer* r, std::string_view text, Size sz,
         unsigned ch = static_cast<unsigned char>(c);
         if (ch < kFirstChar || ch >= kFirstChar + kCharCount) continue;
         stbtt_aligned_quad q;
-        stbtt_GetBakedQuad(const_cast<stbtt_bakedchar*>(b->chars.data()),
-                           kAtlasW, kAtlasH,
-                           static_cast<int>(ch) - kFirstChar, &pen_x, &pen_y, &q, 1);
+        stbtt_GetPackedQuad(const_cast<stbtt_packedchar*>(b->chars.data()),
+                            kAtlasW, kAtlasH,
+                            static_cast<int>(ch) - kFirstChar, &pen_x, &pen_y, &q, 1);
         SDL_FRect src{q.s0 * kAtlasW, q.t0 * kAtlasH,
                       (q.s1 - q.s0) * kAtlasW, (q.t1 - q.t0) * kAtlasH};
         SDL_FRect dst{x + q.x0 * scale, y + q.y0 * scale,

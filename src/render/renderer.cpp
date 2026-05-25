@@ -407,9 +407,12 @@ void Renderer::draw_tally_(const Animations& anims) {
 
         std::uint8_t a = static_cast<std::uint8_t>(fade_in * 255.0f);
         // Outline width scales with the font so the stroke stays proportional.
-        const float o = std::max(2.0f, scale * 2.5f);
-        const float offs[8][2] = {{-o,0},{o,0},{0,-o},{0,o},
-                                  {-o,-o},{o,-o},{-o,o},{o,o}};
+        // LINEAR-sampled glyph edges have ~1–2 px of soft falloff, so we need
+        // at least 4 px of shift before the solid inner ring is visible.
+        const float o = std::max(4.0f, scale * 6.0f);
+        const float d = o * 0.7071f;  // diagonals at same distance as cardinals
+        const float offs[8][2] = {{-o, 0}, {o, 0}, {0, -o}, {0, o},
+                                  {-d, -d}, {d, -d}, {-d, d}, {d, d}};
         for (const auto& off : offs) {
             text_.draw_centered(sdl_renderer_, label, sz,
                                 cx + off[0], baseline + off[1],

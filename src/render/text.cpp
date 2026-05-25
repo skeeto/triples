@@ -14,24 +14,24 @@ namespace {
 
 constexpr int kAtlasW = 1024;
 constexpr int kAtlasH = 1024;
-constexpr int kFirstChar = 32;
-constexpr int kCharCount = 0x7E - kFirstChar + 1;
 // Pixels of zero-alpha around each glyph in the atlas. Lets callers shift the
 // rendered glyph by up to this many pixels (e.g. for a black-outline halo)
 // without sampling neighbour glyphs.
 constexpr int kGlyphPadding = 4;
 
 struct BakedSize {
-    std::array<stbtt_packedchar, kCharCount> chars{};
-    SDL_Texture*                             tex = nullptr;
-    float                                    px = 0.0f;
-    float                                    line = 0.0f;
-    float                                    ascent = 0.0f;
+    std::vector<stbtt_packedchar> chars;  // sized by Impl::char_count
+    SDL_Texture*                  tex = nullptr;
+    float                         px = 0.0f;
+    float                         line = 0.0f;
+    float                         ascent = 0.0f;
 };
 
 }  // namespace
 
 struct TextAtlas::Impl {
+    int                      first_char = 0x20;
+    int                      char_count = 0x7F - 0x20;
     std::array<BakedSize, 3> sizes;
 
     ~Impl() {
@@ -42,6 +42,7 @@ struct TextAtlas::Impl {
 
     bool build_size(SDL_Renderer* r, const unsigned char* data,
                     BakedSize& out, float px) {
+        out.chars.assign(char_count, stbtt_packedchar{});
         std::vector<unsigned char> bitmap(static_cast<std::size_t>(kAtlasW) * kAtlasH, 0u);
         stbtt_pack_context spc;
         if (!stbtt_PackBegin(&spc, bitmap.data(), kAtlasW, kAtlasH, kAtlasW,
@@ -50,9 +51,9 @@ struct TextAtlas::Impl {
         }
         stbtt_pack_range range{};
         range.font_size = px;
-        range.first_unicode_codepoint_in_range = kFirstChar;
+        range.first_unicode_codepoint_in_range = first_char;
         range.array_of_unicode_codepoints = nullptr;
-        range.num_chars = kCharCount;
+        range.num_chars = char_count;
         range.chardata_for_range = out.chars.data();
         range.h_oversample = 1;
         range.v_oversample = 1;
@@ -98,9 +99,12 @@ TextAtlas::~TextAtlas() = default;
 
 bool TextAtlas::initialize(SDL_Renderer* r,
                            const unsigned char* ttf_data, std::size_t ttf_size,
-                           float small_px, float body_px, float large_px) {
+                           float small_px, float body_px, float large_px,
+                           int first_char, int char_count) {
     (void)ttf_size;
     impl_ = std::make_unique<Impl>();
+    impl_->first_char = first_char;
+    impl_->char_count = char_count;
     if (!impl_->build_size(r, ttf_data, impl_->sizes[0], small_px)) { impl_.reset(); return false; }
     if (!impl_->build_size(r, ttf_data, impl_->sizes[1], body_px))  { impl_.reset(); return false; }
     if (!impl_->build_size(r, ttf_data, impl_->sizes[2], large_px)) { impl_.reset(); return false; }
@@ -112,12 +116,14 @@ float TextAtlas::measure_width(std::string_view text, Size sz, float scale) cons
     const BakedSize* b = impl_->by_size(sz);
     float x = 0.0f, y = 0.0f;
     stbtt_aligned_quad q;
+    const int first = impl_->first_char;
+    const int count = impl_->char_count;
     for (char c : text) {
         unsigned ch = static_cast<unsigned char>(c);
-        if (ch < kFirstChar || ch >= kFirstChar + kCharCount) continue;
+        if (static_cast<int>(ch) < first || static_cast<int>(ch) >= first + count) continue;
         stbtt_GetPackedQuad(const_cast<stbtt_packedchar*>(b->chars.data()),
                             kAtlasW, kAtlasH,
-                            static_cast<int>(ch) - kFirstChar, &x, &y, &q, 1);
+                            static_cast<int>(ch) - first, &x, &y, &q, 1);
     }
     return x * scale;
 }
@@ -141,14 +147,16 @@ void TextAtlas::draw(SDL_Renderer* r, std::string_view text, Size sz,
     SDL_SetTextureColorMod(b->tex, cr, cg, cb);
     SDL_SetTextureAlphaMod(b->tex, ca);
     // Run the pen in baked space (scale=1) and scale quad output around (x, y).
+    const int first = impl_->first_char;
+    const int count = impl_->char_count;
     float pen_x = 0.0f, pen_y = 0.0f;
     for (char c : text) {
         unsigned ch = static_cast<unsigned char>(c);
-        if (ch < kFirstChar || ch >= kFirstChar + kCharCount) continue;
+        if (static_cast<int>(ch) < first || static_cast<int>(ch) >= first + count) continue;
         stbtt_aligned_quad q;
         stbtt_GetPackedQuad(const_cast<stbtt_packedchar*>(b->chars.data()),
                             kAtlasW, kAtlasH,
-                            static_cast<int>(ch) - kFirstChar, &pen_x, &pen_y, &q, 1);
+                            static_cast<int>(ch) - first, &pen_x, &pen_y, &q, 1);
         SDL_FRect src{q.s0 * kAtlasW, q.t0 * kAtlasH,
                       (q.s1 - q.s0) * kAtlasW, (q.t1 - q.t0) * kAtlasH};
         SDL_FRect dst{x + q.x0 * scale, y + q.y0 * scale,

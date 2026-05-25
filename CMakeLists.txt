@@ -30,7 +30,8 @@ FetchContent_MakeAvailable(SDL3)
 
 # --- Embedded resources -------------------------------------------------------
 include(${CMAKE_SOURCE_DIR}/cmake/EmbedResource.cmake)
-embed_resource(font_inter_bold assets/fonts/Inter-Bold.ttf)
+embed_resource(font_inter_bold   assets/fonts/Inter-Bold.ttf)
+embed_resource(font_jua_regular  assets/fonts/Jua-Regular.ttf)
 # Audio is synthesized procedurally in src/audio/synth.cpp — no asset files.
 
 # --- Source layout ------------------------------------------------------------

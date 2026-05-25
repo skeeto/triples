@@ -67,7 +67,8 @@ private:
     int           logical_h_    = 0;
     Layout        layout_{};
 
-    TextAtlas         text_;
+    TextAtlas         text_;          // Inter-Bold for HUD / labels.
+    TextAtlas         text_digits_;   // Jua for tile values + tally "+N".
     TileTextureCache  tiles_;
     SDL_Texture*      empty_slot_tex_ = nullptr;
     int               baked_cell_w_ = 0;   // px width the cache was baked at

@@ -95,7 +95,16 @@ bool Renderer::initialize(const char* title, int initial_w, int initial_h) {
     // the renderer scales each draw down (or up) to fit the current cell.
     if (!text_.initialize(sdl_renderer_, font_inter_bold_data, font_inter_bold_size,
                           32.0f, 48.0f, 96.0f)) {
-        std::fprintf(stderr, "TextAtlas::initialize failed\n");
+        std::fprintf(stderr, "TextAtlas::initialize (Inter) failed\n");
+        return false;
+    }
+    // Jua for digits + the "+" sign on the tally. Limited to ASCII 43..57
+    // (`+`, `,`, `-`, `.`, `/`, `0`-`9`) so we can afford a much larger Large
+    // bake (192 px) without inflating atlas memory — keeps 4K screens at
+    // close to a 1:1 scale instead of upscaling a 96-px font 2-3×.
+    if (!text_digits_.initialize(sdl_renderer_, font_jua_regular_data, font_jua_regular_size,
+                                 64.0f, 96.0f, 192.0f, 43, 15)) {
+        std::fprintf(stderr, "TextAtlas::initialize (Jua) failed\n");
         return false;
     }
     return true;
@@ -216,16 +225,16 @@ void Renderer::draw_one_tile_(std::uint8_t rank, float center_x, float center_y,
     // is ~50% of cell height; if the number is too wide for the tile (long
     // values like 6144 on a narrow cell), shrink to fit.
     const TextAtlas::Size sz = TextAtlas::Size::Large;
-    float scale = (layout_.cell_h * 0.50f) / text_.line_height(sz);
-    float w = text_.measure_width(buf, sz, scale);
+    float scale = (layout_.cell_h * 0.50f) / text_digits_.line_height(sz);
+    float w = text_digits_.measure_width(buf, sz, scale);
     const float max_w = layout_.cell_w * 0.82f;
     if (w > max_w) scale *= max_w / w;
-    float h = text_.line_height(sz, scale);
+    float h = text_digits_.line_height(sz, scale);
     // Center text vertically in the upper ~78% of the tile (above the bottom band).
     float text_center_y = center_y - layout_.cell_h * 0.5f + (layout_.cell_h * 0.78f) * 0.5f;
     float baseline_y = text_center_y + h * 0.32f;
-    text_.draw_centered(sdl_renderer_, buf, sz, center_x, baseline_y,
-                        tr, tg, tb, alpha, scale);
+    text_digits_.draw_centered(sdl_renderer_, buf, sz, center_x, baseline_y,
+                               tr, tg, tb, alpha, scale);
 }
 
 void Renderer::draw_tiles_(const game::GameState& state, const input::DragController& drag,
@@ -394,14 +403,14 @@ void Renderer::draw_tally_(const Animations& anims) {
         // info, not the headline. ~22% of cell height (vs 50% for the tile),
         // allowed to spill up to 15% past the tile width.
         const TextAtlas::Size sz = TextAtlas::Size::Large;
-        float scale = (layout_.cell_h * 0.22f) / text_.line_height(sz);
-        float label_w = text_.measure_width(label, sz, scale);
+        float scale = (layout_.cell_h * 0.22f) / text_digits_.line_height(sz);
+        float label_w = text_digits_.measure_width(label, sz, scale);
         const float max_w = layout_.cell_w * 1.15f;
         if (label_w > max_w) scale *= max_w / label_w;
 
         // Position: the label sits ON the tile in its upper-most strip, with
         // just the tops of the glyphs peeking above the tile's top edge.
-        float ascent   = text_.baseline(sz, scale);
+        float ascent   = text_digits_.baseline(sz, scale);
         float baseline = top_y + ascent * 0.78f;  // glyphs mostly on the tile
         baseline -= (1.0f - fade_in) * 6.0f;
 
@@ -414,13 +423,13 @@ void Renderer::draw_tally_(const Animations& anims) {
         const float offs[8][2] = {{-o, 0}, {o, 0}, {0, -o}, {0, o},
                                   {-d, -d}, {d, -d}, {-d, d}, {d, d}};
         for (const auto& off : offs) {
-            text_.draw_centered(sdl_renderer_, label, sz,
-                                cx + off[0], baseline + off[1],
-                                0x00, 0x00, 0x00, a, scale);
+            text_digits_.draw_centered(sdl_renderer_, label, sz,
+                                       cx + off[0], baseline + off[1],
+                                       0x00, 0x00, 0x00, a, scale);
         }
         // Yellow fill (white-tile edge color).
-        text_.draw_centered(sdl_renderer_, label, sz, cx, baseline,
-                            0xFF, 0xCC, 0x66, a, scale);
+        text_digits_.draw_centered(sdl_renderer_, label, sz, cx, baseline,
+                                   0xFF, 0xCC, 0x66, a, scale);
     }
 }
 

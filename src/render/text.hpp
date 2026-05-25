@@ -21,9 +21,15 @@ public:
 
     // Build atlas textures. Returns false on failure (e.g., bad TTF data,
     // texture creation failed). The atlas owns nothing if init failed.
+    //
+    // `first_char` / `char_count` select a contiguous run of ASCII codepoints
+    // to bake. Default is the full printable range (0x20-0x7E). For atlases
+    // used only for digits (e.g., the tile-number font), passing a smaller
+    // range lets you bake a much larger font into the same atlas.
     bool initialize(SDL_Renderer* r,
                     const unsigned char* ttf_data, std::size_t ttf_size,
-                    float small_px, float body_px, float large_px);
+                    float small_px, float body_px, float large_px,
+                    int first_char = 0x20, int char_count = 0x7F - 0x20);
 
     // Measure pixel width / line metrics of `text` at the given size. All
     // three accept an optional `scale` so callers can render at any size

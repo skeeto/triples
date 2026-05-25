@@ -5,4 +5,7 @@
 extern "C" {
 extern const unsigned char  font_inter_bold_data[];
 extern const unsigned long  font_inter_bold_size;
+
+extern const unsigned char  font_jua_regular_data[];
+extern const unsigned long  font_jua_regular_size;
 }

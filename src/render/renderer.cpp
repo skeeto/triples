@@ -426,19 +426,36 @@ void Renderer::draw_tiles_(const game::GameState& state, const input::DragContro
         draw_one_tile_(rank, cx, cy, s, s, static_cast<std::uint8_t>(a * 255.0f), current_max);
     }
 
-    // Score popups.
+    // Score popups. Yellow fill (matches the white-tile edge band) with a
+    // thin black halo so the "+N" reads against both white tiles (whose
+    // dark digits would otherwise camouflage it) and blue/red tiles. We
+    // peak the fill at full opacity AND keep the halo at half-alpha with
+    // just four cardinal stamps; with the previous 8-stamp full-alpha halo
+    // each glyph-center pixel was painted ~100% black before the yellow
+    // landed, and at the popup's ≤220 fill alpha that bled through as ~14%
+    // black, dimming pure yellow (255, 204, 102) to a mustard ~(219, 175, 88).
     for (const auto& p : anims.score_popups) {
         float u = p.t / p.dur;
         u = std::clamp(u, 0.0f, 1.0f);
         float dy = -ease(u, Easing::OutQuad) * 40.0f;
-        std::uint8_t a = static_cast<std::uint8_t>((1.0f - u) * 220.0f);
+        std::uint8_t a      = static_cast<std::uint8_t>((1.0f - u) * 255.0f);
+        std::uint8_t halo_a = static_cast<std::uint8_t>(a * 0.5f);
         char buf[20];
         std::size_t n;
         format_int(p.value, buf, sizeof(buf), n);
         std::string s = "+";
         s.append(buf, n);
+        const float ox = p.x;
+        const float oy = p.y + dy;
+        constexpr float o = 2.0f;
+        const float offs[4][2] = {{-o, 0}, {o, 0}, {0, -o}, {0, o}};
+        for (const auto& off : offs) {
+            text_.draw_centered(sdl_renderer_, s, TextAtlas::Size::Body,
+                                ox + off[0], oy + off[1],
+                                0x00, 0x00, 0x00, halo_a);
+        }
         text_.draw_centered(sdl_renderer_, s, TextAtlas::Size::Body,
-                            p.x, p.y + dy, 0x2A, 0x2A, 0x2A, a);
+                            ox, oy, 0xFF, 0xCC, 0x66, a);
     }
 }
 

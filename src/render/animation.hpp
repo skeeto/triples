@@ -42,6 +42,13 @@ struct Particle {
     float size = 6.0f;
 };
 
+// Game-over tally: one "+N" label per scoring tile, staggered in time.
+struct ScoreTallyLabel {
+    int           cell;       // 0..15
+    std::uint64_t value;      // tile's score (kTileScores[rank])
+    float         delay;      // seconds after tally start before this label appears
+};
+
 class Animations {
 public:
     Animations() {
@@ -62,6 +69,7 @@ public:
     void add_screen_shake(float amplitude, float duration);
     void emit_sparkles(float x, float y, std::uint8_t r, std::uint8_t g, std::uint8_t b);
     void emit_confetti(float x_min, float x_max);
+    void start_tally(std::vector<ScoreTallyLabel> labels);
 
     // Current screen shake offset (px). Renderer applies before everything.
     void shake_offset(float& out_x, float& out_y) const;
@@ -79,6 +87,9 @@ public:
     float shake_amp = 0.0f;
     float shake_t   = 0.0f;
     float shake_dur = 0.0f;
+
+    std::vector<ScoreTallyLabel> tally_labels;
+    float                        tally_t = 0.0f;
 };
 
 // Eased value in [0, 1].

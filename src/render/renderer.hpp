@@ -82,6 +82,7 @@ private:
                         float scale_x, float scale_y, std::uint8_t alpha,
                         std::uint8_t current_max);
     void draw_hud_(const game::GameState& state, std::uint64_t high_score, bool game_over);
+    void draw_tally_(const Animations& anims);
 };
 
 }  // namespace triples::render

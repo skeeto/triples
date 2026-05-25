@@ -101,6 +101,7 @@ void App::handle_event_(const SDL_Event& e) {
         }
         case SDL_EVENT_KEY_DOWN: {
             if (game_over_) {
+                if (SDL_GetTicks() < game_over_at_ms_ + kGameOverLockoutMs) return;
                 if (e.key.key == SDLK_RETURN || e.key.key == SDLK_SPACE
                     || e.key.key == SDLK_R) {
                     start_new_game_();
@@ -165,7 +166,9 @@ void App::handle_event_(const SDL_Event& e) {
 
 void App::on_pointer_down_(float x, float y, input::PointerEvent::Source src) {
     if (game_over_) {
-        // Tap anywhere → restart.
+        // Brief lockout so a swipe that triggers game-over doesn't immediately
+        // start a new game on the same gesture's mouseup.
+        if (SDL_GetTicks() < game_over_at_ms_ + kGameOverLockoutMs) return;
         start_new_game_();
         return;
     }
@@ -254,6 +257,7 @@ void App::apply_commit_() {
 
 void App::on_game_over_() {
     game_over_ = true;
+    game_over_at_ms_ = SDL_GetTicks();
     mixer_.play(audio::Sfx::GameOver, 0.9f);
 
     // Insert into high score list.
@@ -268,6 +272,24 @@ void App::on_game_over_() {
     if (highscores_.size() > 8) highscores_.resize(8);
     save_highscores_();
     recompute_best_();
+
+    // Tally up the final score: one "+N" per scoring tile (rank >= 3),
+    // staggered so they appear one after another.
+    std::vector<render::ScoreTallyLabel> labels;
+    labels.reserve(16);
+    int order = 0;
+    constexpr float kStaggerSec = 0.10f;
+    for (int i = 0; i < 16; ++i) {
+        std::uint8_t r = state_.board.cells[i];
+        if (r < 3) continue;  // empty / 1 / 2 score zero
+        render::ScoreTallyLabel L;
+        L.cell  = i;
+        L.value = game::kTileScores[r];
+        L.delay = static_cast<float>(order) * kStaggerSec;
+        labels.push_back(L);
+        ++order;
+    }
+    anims_.start_tally(std::move(labels));
 }
 
 void App::start_new_game_() {

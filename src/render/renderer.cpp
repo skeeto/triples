@@ -6,6 +6,7 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 
 #include "render/effects.hpp"
 #include "resources/embedded.hpp"
@@ -91,7 +92,7 @@ bool Renderer::initialize(const char* title, int initial_w, int initial_h) {
     set_logical_size(w, h);
 
     if (!text_.initialize(sdl_renderer_, font_inter_bold_data, font_inter_bold_size,
-                          18.0f, 28.0f, 56.0f)) {
+                          22.0f, 34.0f, 68.0f)) {
         std::fprintf(stderr, "TextAtlas::initialize failed\n");
         return false;
     }
@@ -211,8 +212,8 @@ void Renderer::draw_one_tile_(std::uint8_t rank, float center_x, float center_y,
     }
     // Pick a font size that fits the tile width.
     TextAtlas::Size sz = TextAtlas::Size::Large;
-    if (layout_.cell_w < 56.0f) sz = TextAtlas::Size::Body;
-    if (layout_.cell_w < 32.0f) sz = TextAtlas::Size::Small;
+    if (layout_.cell_w < 68.0f) sz = TextAtlas::Size::Body;
+    if (layout_.cell_w < 36.0f) sz = TextAtlas::Size::Small;
 
     float w = text_.measure_width(buf, sz);
     while (w > layout_.cell_w * 0.85f && sz != TextAtlas::Size::Small) {
@@ -262,8 +263,10 @@ void Renderer::draw_tiles_(const game::GameState& state, const input::DragContro
         if (!is_leading) return;
         if (line < 0 || drag.dry.line_moved[line]) return;
         float k = (drag.f - 0.85f) / 0.15f;
-        float along  = 1.0f - 0.08f * k;
-        float cross  = 1.0f + 0.04f * k;
+        // Stuck-tile press: expand slightly along the swipe axis and pinch a
+        // touch across it. Reads as the tile leaning into the wall.
+        float along  = 1.0f + 0.08f * k;
+        float cross  = 1.0f - 0.04f * k;
         switch (drag.dir) {
             case game::Direction::Right:
             case game::Direction::Left:
@@ -364,6 +367,62 @@ void Renderer::draw_tiles_(const game::GameState& state, const input::DragContro
     }
 }
 
+void Renderer::draw_tally_(const Animations& anims) {
+    if (anims.tally_labels.empty()) return;
+    const float fade_in_sec = 0.20f;
+    for (const auto& L : anims.tally_labels) {
+        if (anims.tally_t < L.delay) continue;
+        float age = anims.tally_t - L.delay;
+        float fade_in = std::min(age / fade_in_sec, 1.0f);
+
+        int row, col;
+        to_rc(L.cell, row, col);
+        float cx = layout_.board_x + col * layout_.cell_w + layout_.cell_w * 0.5f;
+        float top_y = layout_.board_y + row * layout_.cell_h;
+
+        char buf[24];
+        std::size_t n;
+        format_int(L.value, buf, sizeof(buf), n);
+        // Compose "+N" — caller already filtered out 0-score tiles.
+        char text[28];
+        text[0] = '+';
+        std::memcpy(text + 1, buf, n);
+        std::string_view label(text, n + 1);
+
+        // Same size as tile text — fall back smaller only if the label is
+        // visibly too wide (it can spill slightly past the tile width).
+        TextAtlas::Size sz = TextAtlas::Size::Large;
+        if (layout_.cell_w < 68.0f) sz = TextAtlas::Size::Body;
+        if (layout_.cell_w < 36.0f) sz = TextAtlas::Size::Small;
+        while (text_.measure_width(label, sz) > layout_.cell_w * 1.15f
+               && sz != TextAtlas::Size::Small) {
+            sz = (sz == TextAtlas::Size::Large) ? TextAtlas::Size::Body
+                                                : TextAtlas::Size::Small;
+        }
+
+        // Position: text sits inside the upper portion of the tile, with just
+        // the top of the glyphs peeking past the tile's top edge.
+        float ascent      = text_.baseline(sz);
+        float baseline    = top_y - 4.0f + ascent;
+        // Small drop-in: starts 6 px lower (above final), settles to final.
+        baseline -= (1.0f - fade_in) * 6.0f;
+
+        std::uint8_t a = static_cast<std::uint8_t>(fade_in * 255.0f);
+        // 8-direction black outline so the yellow reads on any tile color.
+        const float o = 2.0f;
+        const float offs[8][2] = {{-o,0},{o,0},{0,-o},{0,o},
+                                  {-o,-o},{o,-o},{-o,o},{o,o}};
+        for (const auto& off : offs) {
+            text_.draw_centered(sdl_renderer_, label, sz,
+                                cx + off[0], baseline + off[1],
+                                0x00, 0x00, 0x00, a);
+        }
+        // Yellow fill (white-tile edge color).
+        text_.draw_centered(sdl_renderer_, label, sz, cx, baseline,
+                            0xFF, 0xCC, 0x66, a);
+    }
+}
+
 void Renderer::draw_hud_(const game::GameState& state, std::uint64_t high_score, bool game_over) {
     // Top HUD spans y=[0 .. board_y]. Lay out: a small label row at the top,
     // then preview card / score number / best number row.
@@ -457,6 +516,7 @@ void Renderer::draw(const game::GameState& state,
 
     draw_empty_slots_();
     draw_tiles_(state, drag, anims);
+    draw_tally_(anims);
     draw_particles(sdl_renderer_, anims);
 
     layout_.board_x -= shake_x;

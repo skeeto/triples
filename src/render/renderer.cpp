@@ -391,21 +391,24 @@ void Renderer::draw_hud_(const game::GameState& state, std::uint64_t high_score,
     text_.draw_centered(sdl_renderer_, "BEST",  TextAtlas::Size::Small,
                         right_anchor,  label_baseline, 0x66, 0x66, 0x66);
 
-    // Preview card (rank-colored fill, rounded-rect-ish via separate SDL_FRect).
+    // Preview card: same tile texture (rounded corners, edge shelf) as on the
+    // board. Per Threes, the preview shows only the color (blue=1, red=2,
+    // white=3 or bonus); bonus value is never revealed — just a "+".
     {
-        std::uint8_t cr, cg, cb;
-        std::uint8_t rank = state.next.rank;
-        if (rank == 1) { cr = 0x00; cg = 0x99; cb = 0xCC; }
-        else if (rank == 2) { cr = 0xE6; cg = 0x45; cb = 0x45; }
-        else { cr = 0xFC; cg = 0xFC; cb = 0xFC; }
-        SDL_FRect rrect{left_anchor - preview_w * 0.5f, row_top,
-                        preview_w, preview_h};
-        SDL_SetRenderDrawColor(sdl_renderer_, cr, cg, cb, 0xFF);
-        SDL_RenderFillRect(sdl_renderer_, &rrect);
+        std::uint8_t display_rank = state.next.is_bonus
+            ? static_cast<std::uint8_t>(3) : state.next.rank;
+        SDL_Texture* t = tiles_.texture_for(display_rank);
+        SDL_FRect dst{left_anchor - preview_w * 0.5f, row_top, preview_w, preview_h};
+        if (t) {
+            SDL_SetTextureAlphaMod(t, 255);
+            SDL_RenderTexture(sdl_renderer_, t, nullptr, &dst);
+        }
         if (state.next.is_bonus) {
+            // Center the "+" in the body region (upper ~88% of the preview).
+            float bh = text_.line_height(TextAtlas::Size::Large);
+            float baseline = row_top + preview_h * 0.44f + bh * 0.32f;
             text_.draw_centered(sdl_renderer_, "+", TextAtlas::Size::Large,
-                                left_anchor, row_top + preview_h * 0.65f,
-                                0x2A, 0x2A, 0x2A);
+                                left_anchor, baseline, 0x2A, 0x2A, 0x2A);
         }
     }
 

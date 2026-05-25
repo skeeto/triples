@@ -36,8 +36,14 @@ cmake --build build-web
 python3 -m http.server -d build-web    # then open index.html
 ```
 
-`build-web/` is the deployable artifact: `index.html` + `index.js` +
-`index.wasm` + `triples-favicon.png`.
+The whole site is just four files — `index.html`, `index.js`,
+`index.wasm`, and `triples-favicon.png`. To extract those alone (e.g.
+for a `gh-pages` branch) without any of the CMake build-tree noise:
+
+```sh
+cmake --install build-web --prefix dist
+# `dist/` now has exactly the four deployable files.
+```
 
 ### Windows cross build from a Unix host (mingw-w64)
 

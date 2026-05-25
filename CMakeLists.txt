@@ -100,6 +100,15 @@ if(EMSCRIPTEN)
         ${CMAKE_SOURCE_DIR}/shell/triples-favicon.png
         ${CMAKE_CURRENT_BINARY_DIR}/triples-favicon.png
         COPYONLY)
+    # Web deploy: `cmake --install build-web --prefix <dir>` drops just the
+    # four files needed to serve the site — no CMakeFiles/, no _deps/, no
+    # build-tree noise. Suitable for piping straight into a gh-pages branch.
+    install(FILES
+        "${CMAKE_CURRENT_BINARY_DIR}/index.html"
+        "${CMAKE_CURRENT_BINARY_DIR}/index.js"
+        "${CMAKE_CURRENT_BINARY_DIR}/index.wasm"
+        "${CMAKE_CURRENT_BINARY_DIR}/triples-favicon.png"
+        DESTINATION .)
 elseif(APPLE)
     target_sources(triples PRIVATE
         src/platform/persistence_posix.cpp

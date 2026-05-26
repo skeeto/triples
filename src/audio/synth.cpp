@@ -80,6 +80,31 @@ void render_game_over(std::vector<float>& out) {
     add_blip(out, 293.66f, 0.50f, 0.70f, 0.30f);
 }
 
+void render_restart_flip(std::vector<float>& out) {
+    out.clear();
+    // Ascending C major pentatonic, one blip per diagonal of the 4x4 flip
+    // cascade. Spacing matches render::RestartFlip::kStagger (0.06 s), so
+    // each blip lines up rhythmically with a "wave" of tiles flipping;
+    // pitch climbs to suggest a fresh start.
+    const float kStagger = 0.06f;
+    constexpr int N = 7;        // (3+3) diagonals on a 4x4 grid
+    const float notes[N] = {
+        523.25f,   // C5
+        587.33f,   // D5
+        659.25f,   // E5
+        783.99f,   // G5
+        880.00f,   // A5
+        987.77f,   // B5
+        1046.50f,  // C6
+    };
+    for (int i = 0; i < N; ++i) {
+        // Short and quiet — 7 blips can stack on top of in-flight Whoosh /
+        // GameOver tails when the player taps restart quickly, and we don't
+        // want the arpeggio to drown those out.
+        add_blip(out, notes[i], 0.16f, 0.10f, i * kStagger);
+    }
+}
+
 }  // namespace
 
 SfxBuffer synthesize(Sfx s) {
@@ -89,8 +114,9 @@ SfxBuffer synthesize(Sfx s) {
         case Sfx::MergeLow:  render_merge(b.samples, 392.0f, 0.18f); break;  // G4
         case Sfx::MergeMid:  render_merge(b.samples, 523.25f, 0.22f); break; // C5
         case Sfx::MergeHigh: render_merge(b.samples, 659.25f, 0.26f); break; // E5
-        case Sfx::NewMax:    render_new_max(b.samples); break;
-        case Sfx::GameOver:  render_game_over(b.samples); break;
+        case Sfx::NewMax:      render_new_max(b.samples); break;
+        case Sfx::GameOver:    render_game_over(b.samples); break;
+        case Sfx::RestartFlip: render_restart_flip(b.samples); break;
         case Sfx::Count_: break;
     }
     return b;

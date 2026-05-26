@@ -15,6 +15,7 @@ enum class Sfx {
     MergeHigh,   // ranks 9+   (values 192+)
     NewMax,      // bell-like chime when a new max appears
     GameOver,    // descending minor chord
+    RestartFlip, // ascending arpeggio synced to the per-diagonal cascade
     Count_
 };
 

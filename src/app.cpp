@@ -404,6 +404,8 @@ void App::restart_with_flip_() {
     auto old_cells = state_.board.cells;
     start_new_game_();          // clears anims, resets drag, picks fresh seed
     anims_.start_restart_flip(old_cells);
+    // Ascending arpeggio synced to the cascade (one blip per diagonal).
+    mixer_.play(audio::Sfx::RestartFlip, 0.7f);
 }
 
 void App::save_state_() {

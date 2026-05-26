@@ -7,6 +7,10 @@ wall — is replicated precisely, which is what most 2048-style clones lose.
 Mobile web is the primary target; native macOS / Linux / Windows builds are
 also supported.
 
+[**Play Triples in your browser**](https://nullprogram.com/triples/)
+
+![](docs/screenshot.png)
+
 ## Building
 
 Requires a C++20 compiler and CMake 3.24+. SDL3 is fetched via FetchContent

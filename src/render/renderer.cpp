@@ -12,6 +12,27 @@
 #include "resources/embedded.hpp"
 #include "resources/icon.hpp"
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+// SDL3's web backend doesn't read iOS Safari's env(safe-area-inset-*) —
+// SDL_GetWindowSafeArea just returns the full canvas. Read the values
+// the shell exposes as CSS custom properties on :root (see the
+// :root { --sai-top: env(safe-area-inset-top); ... } block in
+// shell/index.html). Returns 0 in browsers without env() support and
+// in non-standalone Safari tabs (where browser chrome shrinks the
+// viewport anyway, so insets aren't needed).
+EM_JS(double, ts_safe_inset_top, (), {
+    var v = getComputedStyle(document.documentElement)
+              .getPropertyValue('--sai-top');
+    return parseFloat(v) || 0;
+});
+EM_JS(double, ts_safe_inset_bottom, (), {
+    var v = getComputedStyle(document.documentElement)
+              .getPropertyValue('--sai-bottom');
+    return parseFloat(v) || 0;
+});
+#endif
+
 namespace triples::render {
 
 namespace {
@@ -171,6 +192,19 @@ void Renderer::recompute_layout_() {
                 (win_h_logical - safe.y - safe.h) * dpr);
         }
     }
+#ifdef __EMSCRIPTEN__
+    // PWA / "Add to Home Screen" on iOS Safari runs in standalone mode
+    // without browser chrome, so the canvas extends under the status bar
+    // and the home indicator. SDL_GetWindowSafeArea above just returned
+    // the full canvas (zero insets); pull the real ones from CSS env().
+    {
+        const float dpr = pixel_density();
+        layout_.safe_top = std::max(layout_.safe_top,
+            static_cast<float>(ts_safe_inset_top()) * dpr);
+        layout_.safe_bot = std::max(layout_.safe_bot,
+            static_cast<float>(ts_safe_inset_bottom()) * dpr);
+    }
+#endif
     const float usable_h = std::max(0.0f,
         layout_.win_h - layout_.safe_top - layout_.safe_bot);
 

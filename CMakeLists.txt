@@ -119,21 +119,34 @@ elseif(EMSCRIPTEN)
         SUFFIX ".html"
         OUTPUT_NAME "index"
     )
-    # Copy the favicon next to index.html so the page's <link rel="icon">
-    # resolves to a sibling file. Configure-time copy: regenerated only when
-    # CMake reruns, which is fine since the PNG is a committed artifact.
-    configure_file(
-        ${CMAKE_SOURCE_DIR}/shell/triples-favicon.png
-        ${CMAKE_CURRENT_BINARY_DIR}/triples-favicon.png
-        COPYONLY)
-    # Web deploy: `cmake --install build-web --prefix <dir>` drops just the
-    # four files needed to serve the site — no CMakeFiles/, no _deps/, no
-    # build-tree noise. Suitable for piping straight into a gh-pages branch.
+    # Copy the favicon + PWA assets next to index.html so their
+    # <link rel="icon"> / <link rel="manifest"> / SW resolve as siblings.
+    # Configure-time copies: regenerated only when CMake reruns, which is
+    # fine since they're committed artifacts.
+    foreach(_pwa_asset
+            triples-favicon.png
+            triples-pwa-192.png
+            triples-pwa-512.png
+            manifest.json
+            triples-sw.js)
+        configure_file(
+            ${CMAKE_SOURCE_DIR}/shell/${_pwa_asset}
+            ${CMAKE_CURRENT_BINARY_DIR}/${_pwa_asset}
+            COPYONLY)
+    endforeach()
+    # Web deploy: `cmake --install build-web --prefix <dir>` drops only
+    # the files needed to serve the site — no CMakeFiles/, no _deps/, no
+    # build-tree noise. Suitable for piping straight into a gh-pages
+    # branch.
     install(FILES
         "${CMAKE_CURRENT_BINARY_DIR}/index.html"
         "${CMAKE_CURRENT_BINARY_DIR}/index.js"
         "${CMAKE_CURRENT_BINARY_DIR}/index.wasm"
         "${CMAKE_CURRENT_BINARY_DIR}/triples-favicon.png"
+        "${CMAKE_CURRENT_BINARY_DIR}/triples-pwa-192.png"
+        "${CMAKE_CURRENT_BINARY_DIR}/triples-pwa-512.png"
+        "${CMAKE_CURRENT_BINARY_DIR}/manifest.json"
+        "${CMAKE_CURRENT_BINARY_DIR}/triples-sw.js"
         DESTINATION .)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")
     # iOS shares the Apple POSIX persistence (HOME resolves to the app's

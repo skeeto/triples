@@ -4,7 +4,8 @@
 <meta charset="utf-8">
 <title>Triples</title>
 <link rel="icon" type="image/png" href="triples-favicon.png">
-<link rel="apple-touch-icon" href="triples-favicon.png">
+<link rel="apple-touch-icon" href="triples-pwa-192.png">
+<link rel="manifest" href="manifest.json">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -261,6 +262,18 @@
       print: function (m) { console.log(m); },
       printErr: function (m) { console.warn(m); },
     };
+
+    // Register the service worker so the page installs as a PWA on
+    // Android Chrome (and works fully offline once cached). Chrome only
+    // honors SW registration on HTTPS or localhost; anywhere else it
+    // silently fails, which is fine — the page still loads normally.
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('triples-sw.js').catch(function (e) {
+          console.warn('SW register failed:', e);
+        });
+      });
+    }
   })();
 </script>
 {{{ SCRIPT }}}

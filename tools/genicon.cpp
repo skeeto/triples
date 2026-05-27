@@ -475,6 +475,22 @@ int main() {
         std::printf("%s  (%dx%d RGBA)\n", ic.path, ic.size, ic.size);
     }
 
+    // --- PWA icons (Add to Home Screen on iOS/Android Chrome) ---
+    // Full-bleed renderTileIOS so the launcher's adaptive mask doesn't
+    // double-clip our rounded corners. Both 192 and 512 are declared in
+    // shell/manifest.json with purpose "any maskable".
+    struct PWAIcon { const char* path; int size; };
+    const PWAIcon pwa_icons[] = {
+        {"shell/triples-pwa-192.png", 192},
+        {"shell/triples-pwa-512.png", 512},
+    };
+    for (const auto& ic : pwa_icons) {
+        auto px = rasterizeIOSAt(ic.size);
+        stbi_write_png(ic.path, ic.size, ic.size, 4,
+                       px.data(), ic.size * 4);
+        std::printf("%s  (%dx%d RGBA)\n", ic.path, ic.size, ic.size);
+    }
+
     // --- Android launcher icons ---
     // Each density bucket gets two PNGs:
     //   ic_launcher.png             — legacy static icon (Android 5–7)

@@ -40,14 +40,21 @@ cmake --build build-web
 python3 -m http.server -d build-web    # then open index.html
 ```
 
-The whole site is just four files — `index.html`, `index.js`,
-`index.wasm`, and `triples-favicon.png`. To extract those alone (e.g.
+The site is eight files: the three Emscripten outputs (`index.html`,
+`index.js`, `index.wasm`), a favicon, a Web App Manifest, a service
+worker, and a 192/512 px PWA icon pair. To extract just those (e.g.
 for a `gh-pages` branch) without any of the CMake build-tree noise:
 
 ```sh
 cmake --install build-web --prefix dist
-# `dist/` now has exactly the four deployable files.
 ```
+
+The page is "Add to Home Screen"-installable on iOS Safari and Chrome
+on Android when served over HTTPS (or `localhost` — Chrome treats it
+as a trusted origin for SW + install). Once installed, the service
+worker handles offline play. Bump `CACHE_NAME` in `shell/triples-sw.js`
+on every release so the SW invalidates the cache and pulls the new
+.wasm / .js on next launch.
 
 ### Windows cross build from a Unix host (mingw-w64)
 

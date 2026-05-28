@@ -3,7 +3,7 @@
 // Bump CACHE_NAME (e.g. v1 → v2) on every release; the activate handler
 // then sweeps any older cache so users get the new wasm/JS on next launch.
 // Without this bump the SW happily serves stale assets forever.
-const CACHE_NAME = 'triples-v1';
+const CACHE_NAME = 'triples-v2';
 const ASSETS = [
     './',
     './index.html',

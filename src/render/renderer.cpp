@@ -252,15 +252,24 @@ void Renderer::recompute_layout_() {
         (layout_.win_h - layout_.safe_bot)
         - (layout_.board_y + layout_.board_h);
     constexpr float kBottomMargin = 4.0f;
+    // Gap between the board's bottom edge and the restart button's top edge:
+    //   gap(r) = max(kMinGap, kGapFactor * r)
+    // Tuned to keep the button visually anchored *to* the board rather than
+    // glued *against* it.
+    constexpr float kMinGap     = 16.0f;
+    constexpr float kGapFactor  = 0.22f;
     const float usable = std::max(0.0f, space_below_board - kBottomMargin);
-    // Given gap(r) = max(8, 0.16*r) and the constraint gap(r) + 2*r <= usable,
-    // solve for the largest r in each gap regime and pick the feasible one.
-    float r_max_min_gap = (usable - 8.0f) * 0.5f;
-    float r_max = (r_max_min_gap > 50.0f) ? (usable / 2.16f) : r_max_min_gap;
+    // Constraint:  gap(r) + 2*r <= usable. Solve for the largest r in each
+    // gap regime and pick the feasible one. Transition between regimes at
+    // r = kMinGap / kGapFactor (where the two gap expressions meet).
+    const float r_max_min_gap = (usable - kMinGap) * 0.5f;
+    float r_max = (r_max_min_gap > kMinGap / kGapFactor)
+        ? (usable / (2.0f + kGapFactor))
+        : r_max_min_gap;
     if (r_max < 0.0f) r_max = 0.0f;
     const float r_from_cell = layout_.cell_w * 0.42f;
     layout_.restart_r = std::clamp(std::min(r_from_cell, r_max), 16.0f, 100.0f);
-    const float gap_to_board = std::max(8.0f, layout_.restart_r * 0.16f);
+    const float gap_to_board = std::max(kMinGap, layout_.restart_r * kGapFactor);
     layout_.restart_cy = (layout_.board_y + layout_.board_h)
                         + gap_to_board + layout_.restart_r;
     // Hit radius: 20% larger than the visible disc for finger-friendliness,
